@@ -25,7 +25,8 @@ df = df[df["start_date_local"] >= "2023-01-01"]
 
 df['type'] = df.apply(
     lambda row: 'Pickleball' if row['type'] == 'Workout' and 'pickleball' in str(row.get('name', '')).lower()
-    else ('Cardio' if row['type'] == 'Workout' else row['type']),
+    else ('Cardio' if row['type'] == 'Workout' 
+          else ('Weight Training' if row['type'] == 'WeightTraining' else row['type'])),
     axis=1
 )
 
@@ -51,7 +52,7 @@ color_map = {
     'Ride': '#ff9f40',        # Lighter orange
     'Pickleball': '#b967ff',  # Brighter purple
     'Cardio': '#4bc0c0',      # Teal green
-    'WeightTraining': '#ff6384', # Bright pink
+    'Weight Training': '#ff6384', # Bright pink
     'Hike': '#a8a8a8',        # Lighter gray
 }
 
@@ -192,7 +193,7 @@ hourly_df = hourly_df.sort_values("hour_of_day")
 #######################
 
 # Convert pace (min/km), filter for runs only with good HR and distance data
-run_df = df[(df["type"] == "Run") & df["average_heartrate"].notna() & (df["distance"] > 0)]
+run_df = df[(df["type"] == "Run")]# & df["average_heartrate"].notna() & (df["distance"] > 0)]
 run_df["pace_min_per_km"] = run_df["moving_time"] / 60 / (run_df["distance"] / 1000)
 
 #######################
@@ -298,7 +299,7 @@ layout_pie = dbc.Row([
             pie_df(), 
             names="type", 
             values="duration_hr", 
-            title="All-Time Hours by Activity Type", 
+            title="🌟 All-Time Activity (Since 2023) 🌟", 
             color="type",  
             color_discrete_map=color_map,
             hole=0.4  
@@ -316,7 +317,7 @@ layout_pie = dbc.Row([
                 pie_df("previous"), 
                 names="type", 
                 values="duration_hr", 
-                title=f"{prev_year} Hours by Activity Type ({prev_year_hours:.1f}h)", 
+                title=f"🔙 {prev_year} Activity ({prev_year_hours:.1f}h) 🔙", 
                 color="type",  
                 color_discrete_map=color_map,
                 hole=0.4
@@ -335,7 +336,7 @@ layout_pie = dbc.Row([
                 pie_df("YTD"), 
                 names="type", 
                 values="duration_hr", 
-                title=f"{latest_year} YTD Hours ({ytd_hours:.1f}h, {progress_percent} of year)", 
+                title=f"🔥 {latest_year} YTD ({ytd_hours:.1f}h, {progress_percent} of year) 🔥", 
                 color="type",  
                 color_discrete_map=color_map,
                 hole=0.4
@@ -349,7 +350,7 @@ layout_pie = dbc.Row([
         ),
         html.Div([
             html.H5([
-                f"Projected {latest_year}: {projected_hours:.1f}h ",
+                f"✨ Projected {latest_year}: {projected_hours:.1f}h ",
                 html.Span(f"{trend_emoji} {abs(projected_hours - prev_year_hours):.1f}h vs {prev_year}", 
                          style={"color": "lightgreen" if on_track else "#ff6b6b"})
             ], className="text-center mt-2")
@@ -388,7 +389,7 @@ for activity_type in df['type'].unique():
 
 # Update layout with enhanced dark mode
 fitness_fig.update_layout(
-    title_text="Fitness Score & Monthly Training Volume",
+    title_text="💪 Fitness Trend & Monthly Training Hours 📈",
     barmode='stack',
     hovermode="x unified",
     showlegend=False,  # Remove legend
@@ -431,7 +432,7 @@ layout_fitness = dbc.Row([
 weekday_fig = px.bar(
     weekday_df,
     x="weekday", y="duration_hr", color="type",
-    title="Weekly Training Hours",
+    title="🗓️ What Days Are You Active? 🗓️",
     color_discrete_map=color_map,
     labels={"duration_hr": "Hours", "weekday": ""}  # Removed x-axis label
 ).update_traces(
@@ -459,7 +460,7 @@ start_hour_fig = px.bar(
     x='hour_of_day',
     y='duration_hr',
     color='type',
-    title='Hourly Training Hours',
+    title='⏰ Activity Timing ⏰',
     labels={'hour_of_day': '', 'duration_hr': 'Hours'},  # Removed x-axis title
     color_discrete_map=color_map,
 ).update_traces(
@@ -498,7 +499,7 @@ layout_cumulative = dbc.Row([
         figure=px.area(
             count_pivot,
             x="date", y=count_pivot.columns[1:],
-            title="Cumulative Activity Count",
+            title="🏆 What Activities Are You Doing Most? 🏆",
             color_discrete_map=color_map,
             labels={"value": "Count", "date": "", "variable": "Activity Type"}  # Removed x-axis label
         ).update_traces(
@@ -523,7 +524,7 @@ layout_cumulative = dbc.Row([
         figure=px.area(
             time_pivot,
             x="date", y=time_pivot.columns[1:],
-            title="Cumulative Training Hours",
+            title="⏱️ Training Hours Accumulation ⏱️",
             color_discrete_map=color_map,
             labels={"value": "Hours", "date": "", "variable": "Activity Type"}  # Removed x-axis label
         ).update_traces(
@@ -545,6 +546,7 @@ layout_cumulative = dbc.Row([
         )
     ), md=6)
 ])
+
 # 5. Run Performance 
 layout_scatter = dbc.Row([
     dbc.Col(dcc.Graph(
@@ -552,7 +554,7 @@ layout_scatter = dbc.Row([
             run_df,
             x="date", y="pace_min_per_km",
             size="distance", color="average_heartrate",
-            title="Run Pace Over Time",
+            title="🏃‍♂️ Run Pace Timeline 🏃‍♀️",
             labels={
                 "pace_min_per_km": "Pace (min/km)",
                 "date": "",  # Removed x-axis label
@@ -588,6 +590,9 @@ layout_scatter = dbc.Row([
                 gridcolor=dark_grid_color,
                 minor_showgrid=False,
                 autorange="reversed"  # This flips the y-axis so lower values are higher
+            ),
+            coloraxis_colorbar=dict(
+                tickformat="d"  # Format to show whole numbers
             )
         )
     ), md=6),
@@ -600,7 +605,7 @@ layout_scatter = dbc.Row([
             color="year", 
             color_continuous_scale="RdYlBu_r",
             size="distance",
-            title="Run Pace vs Heart Rate",
+            title="❤️ Run Efficiency ⚡",
             labels={
                 "pace_min_per_km": "Pace (min/km)",
                 "average_heartrate": "Average Heart Rate (bpm)",
@@ -647,6 +652,12 @@ layout_scatter = dbc.Row([
                 y=1.02,
                 xanchor="right",
                 x=1
+            ),
+            coloraxis_colorbar=dict(
+                tickvals=list(range(int(min(run_df["year"])), 
+                                  int(max(run_df["year"])) + 1, 
+                                  1)),  # Show each year individually
+                tickformat="d"  # Format to show whole numbers
             )
         )
     ), md=6)
@@ -694,7 +705,7 @@ bubble_fig = px.scatter(
     size='bubble_size',  # Use transformed size
     color='duration_hr',
     color_continuous_scale='Viridis',
-    title='Activity Hours by Day (Last 8 Weeks)',
+    title='📅 Workout Calendar - Last 2 Months 🗓️',
     labels={
         'weekday': 'Day of Week',
         'week_number': 'Week',
@@ -740,9 +751,46 @@ layout_bubble = dbc.Row([
 ])
 
 # 7. Bonus Stats
+# First, prepare data for recent activities
+recent_activities = df.sort_values("start_date_local", ascending=False).head(5)
+# Define activity type emojis
+activity_emoji = {
+    'Run': '🏃',
+    'Ride': '🚴',
+    'Pickleball': '🏓',
+    'Cardio': '💪',
+    'Weight Training': '🏋️',
+    'Hike': '🥾',
+    'Workout': '🤸'
+}
+
+# Find the "best" activity
+max_distance_idx = recent_activities[recent_activities['distance'].notna()]['distance'].idxmax() \
+    if not recent_activities[recent_activities['distance'].notna()].empty else None
+max_hr_idx = recent_activities[recent_activities['average_heartrate'].notna()]['average_heartrate'].idxmax() \
+    if not recent_activities[recent_activities['average_heartrate'].notna()].empty else None
+
+recent_activities_df = pd.DataFrame({
+    "Date": recent_activities["start_date_local"].dt.strftime("%b %d"),
+    "Activity": recent_activities.apply(
+        lambda row: f"{activity_emoji.get(row['type'], '🏋️')} {row['type']}", 
+        axis=1
+    ),
+    "Duration": recent_activities["duration_hr"].apply(lambda x: f"{int(x * 60)}:{int((x * 60 % 1) * 60):02d} min"),
+    "Details": recent_activities.apply(
+        lambda row: f"{row['distance']/1000:.1f}km {'🔥' if row.name == max_distance_idx else ''}" 
+            if row['type'] in ['Run', 'Ride', 'Hike']
+        else f"{row.get('average_heartrate', 0):.0f} bpm {'❤️' if row.name == max_hr_idx else ''}" 
+            if pd.notnull(row.get('average_heartrate')) 
+        else "", 
+        axis=1
+    )
+})
+
+# 7. Bonus Stats
 layout_bonus = dbc.Row([
     dbc.Col([
-        html.H4("Overall Stats", className="text-center my-3"),
+        html.H4("🏆 Overall Stats", className="text-center my-3"),
         dash_table.DataTable(
             data=individual_stats_df.to_dict("records"),
             columns=[{"name": c, "id": c} for c in individual_stats_df.columns],
@@ -762,7 +810,31 @@ layout_bonus = dbc.Row([
     ], md=6, className="mb-4"),
     
     dbc.Col([
-        html.H4("YoY Stats", className="text-center my-3"),
+        html.H4("⏱️ Recent Activities", className="text-center my-3"),
+        dash_table.DataTable(
+            data=recent_activities_df.to_dict("records"),
+            columns=[{"name": c, "id": c} for c in recent_activities_df.columns],
+            style_table={"width": "100%", "margin": "0 auto", "marginBottom": "20px"},
+            style_cell={
+                "textAlign": "left", 
+                "padding": "5px",
+                "backgroundColor": dark_paper_color,
+                "color": dark_text_color
+            },
+            style_header={
+                "fontWeight": "bold", 
+                "backgroundColor": "#2C2C2C", 
+                "color": dark_text_color
+            },
+        )
+    ], md=6)
+], className="mt-4")
+
+# New row for YoY Stats centered
+layout_yoy = dbc.Row([
+    dbc.Col([], md=3),  # Empty column for centering
+    dbc.Col([
+        html.H4("📊 Year-over-Year Comparison", className="text-center my-3"),
         dash_table.DataTable(
             data=comparative_stats_df.to_dict("records"),
             columns=[{"name": c, "id": c} for c in comparative_stats_df.columns],
@@ -780,28 +852,8 @@ layout_bonus = dbc.Row([
             },
         )
     ], md=6),
+    dbc.Col([], md=3),  # Empty column for centering
 ], className="mt-4")
-
-# Extract Plotly figures from Dash layout components safely
-def get_figure_from_col(col):
-    if isinstance(col.children, list):
-        return col.children[0].figure
-    else:
-        return col.children.figure
-
-figures = [
-    ("Activity Type Distribution", get_figure_from_col(layout_pie.children[0])),
-    ("", get_figure_from_col(layout_pie.children[1])),
-    ("", get_figure_from_col(layout_pie.children[2])),
-    ("Fitness Score & Monthly Training Volume", get_figure_from_col(layout_fitness.children[0])),
-    ("Weekly Training Patterns", get_figure_from_col(layout_weekly_patterns.children[0])),
-    ("Hourly Training Hours", get_figure_from_col(layout_weekly_patterns.children[1])),
-    ("Cumulative Activity Count", get_figure_from_col(layout_cumulative.children[0])),
-    ("Cumulative Training Hours", get_figure_from_col(layout_cumulative.children[1])),
-    ("Run Pace Over Time", get_figure_from_col(layout_scatter.children[0])),
-    ("Pace vs Heart Rate", get_figure_from_col(layout_scatter.children[1])),
-    ("Activity Hours by Day (Last 8 Weeks)", get_figure_from_col(layout_bubble.children[0]))
-]
 
 # Final app layout - following the order of the dashboard
 app.layout = dbc.Container([
@@ -809,6 +861,7 @@ app.layout = dbc.Container([
     layout_pie,
     html.Hr(),
     layout_bonus,
+    layout_yoy,
     html.Hr(),
     layout_fitness,
     html.Hr(),
@@ -820,7 +873,6 @@ app.layout = dbc.Container([
     html.Hr(),
     layout_bubble,
 ], fluid=True, style={"backgroundColor": dark_bg_color})
-
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
