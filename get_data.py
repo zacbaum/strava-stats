@@ -6,7 +6,6 @@ import os
 from dotenv import load_dotenv
 
 
-
 def main():
     # Suppress SSL warnings
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -16,7 +15,7 @@ def main():
     CLIENT_ID = os.getenv("CLIENT_ID")
     CLIENT_SECRET = os.getenv("CLIENT_SECRET")
     REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
-
+    
     # API endpoints
     auth_url = "https://www.strava.com/oauth/token"
     activities_url = "https://www.strava.com/api/v3/athlete/activities"
