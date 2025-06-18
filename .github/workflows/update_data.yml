@@ -1,0 +1,45 @@
+name: Daily Strava Data Pull
+
+on:
+  schedule:
+    - cron: "0 10 * * *"  # Every day at 10:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: false  # we'll use PAT below
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run get_data.py
+        env:
+          CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
+        run: python get_data.py
+
+      - name: Commit and push if `activities.csv` changed
+        run: |
+          git config --global user.name "Strava Bot"
+          git config --global user.email "bot@github.com"
+          git add activities.csv
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🔄 Auto-update activities.csv"
+            git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git HEAD:main
+          fi
