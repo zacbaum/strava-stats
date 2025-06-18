@@ -3,15 +3,19 @@ import urllib3
 import pandas as pd
 import time
 import os
+from dotenv import load_dotenv
+
+
 
 def main():
     # Suppress SSL warnings
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    # Strava credentials (updated)
-    CLIENT_ID = '164870'
-    CLIENT_SECRET = '82cfd3d97c6d03ec9f63133c4bbc42cf5adca412'
-    REFRESH_TOKEN = 'a18dd40a710a1354430dca4b1211ec937ea04477'
+    # Strava credentials
+    load_dotenv()  # take environment variables from .env
+    CLIENT_ID = os.getenv("CLIENT_ID")
+    CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+    REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 
     # API endpoints
     auth_url = "https://www.strava.com/oauth/token"
