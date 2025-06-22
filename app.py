@@ -680,8 +680,18 @@ recent_df['date_dt'] = pd.to_datetime(recent_df['date'])
 recent_df['week_number'] = ((recent_df['date_dt'] - pd.to_datetime(start_date)).dt.days // 7)
 recent_df['weekday'] = recent_df['start_date_local'].dt.weekday  # 0 = Monday, 6 = Sunday
 
-# Calculate total duration per day
-daily_duration = recent_df.groupby(['date', 'week_number', 'weekday'])['duration_hr'].sum().reset_index()
+# Calculate total duration and weighted average heart rate per day
+daily_stats = recent_df.groupby(['date', 'week_number', 'weekday']).apply(
+    lambda x: pd.Series({
+        'duration_hr': x['duration_hr'].sum(),
+        'avg_hr': np.average(
+            x['average_heartrate'].fillna(0), 
+            weights=x['duration_hr'],
+            axis=0
+        ) if x['average_heartrate'].notna().any() else 0,
+        'activity_types': ', '.join(x['type'].unique())  # Collect all activity types for the day
+    })
+).reset_index()
 
 # Create a complete calendar grid with all days in the period
 date_range = pd.date_range(start=start_date, end=recent_date, freq='D')
@@ -691,34 +701,47 @@ calendar_df = pd.DataFrame({
     'week_number': [(d - start_date_ts).days // 7 for d in date_range],
     'weekday': [d.weekday() for d in date_range]
 })
-calendar_df = calendar_df.merge(daily_duration, on=['date', 'week_number', 'weekday'], how='left')
+calendar_df = calendar_df.merge(daily_stats, on=['date', 'week_number', 'weekday'], how='left')
 calendar_df['duration_hr'] = calendar_df['duration_hr'].fillna(0)
+calendar_df['avg_hr'] = calendar_df['avg_hr'].fillna(0)
+calendar_df['activity_types'] = calendar_df['activity_types'].fillna('')
 
 # Apply transformation to make bubble sizes more distinct
-calendar_df['bubble_size'] = ((calendar_df['duration_hr'] * 60))
+calendar_df['bubble_size'] = calendar_df['duration_hr'] * 60
+
+# Get the actual heart rate range from the data for colorbar scaling
+min_hr = max(50, calendar_df[calendar_df['avg_hr'] > 0]['avg_hr'].min())
+max_hr = min(200, calendar_df['avg_hr'].max())
+midpoint_hr = (min_hr + max_hr) / 2
 
 # Create bubble chart with inverted y-axis (recent weeks at bottom)
 bubble_fig = px.scatter(
     calendar_df,
     x='weekday',
     y='week_number',
-    size='bubble_size',  # Use transformed size
-    color='duration_hr',
-    color_continuous_scale='Viridis',
+    size='bubble_size',  # Use duration for size
+    color='avg_hr',      # Use heart rate for color
+    color_continuous_scale='RdYlBu_r',  # Red for high HR, blue for low HR
     title='📅 Workout Calendar - Last 2 Months 🗓️',
     labels={
         'weekday': 'Day of Week',
         'week_number': 'Week',
+        'avg_hr': 'Avg HR (bpm)',
         'duration_hr': 'Hours'
     },
-    size_max=60  # Increase maximum bubble size
+    size_max=60,  # Increase maximum bubble size
+    color_continuous_midpoint=midpoint_hr,  # Dynamic midpoint based on data
+    range_color=[min_hr, max_hr]  # Set color range to match actual heart rate range
 )
 
-# Format the hover template with MM:SS time display
+# Format the hover template with HR, duration, and activity types information
 bubble_fig.update_traces(
-    hovertemplate="Time: %{customdata[0]} min",
+    hovertemplate="Date: %{customdata[0]}<br>Time: %{customdata[1]} min<br>Avg HR: %{customdata[2]} bpm<br>Activities: %{customdata[3]}",
     customdata=calendar_df.apply(lambda x: [
-        f"{int(x['duration_hr'] * 60)}:{int((x['duration_hr'] * 60 % 1) * 60):02d}" if x['duration_hr'] > 0 else "0:00"
+        x['date'].strftime('%b %d, %Y'),
+        f"{int(x['duration_hr'] * 60)}:{int((x['duration_hr'] * 60 % 1) * 60):02d}" if x['duration_hr'] > 0 else "0:00",
+        f"{int(x['avg_hr'])}" if x['avg_hr'] > 0 else "N/A",
+        x['activity_types'] if x['activity_types'] else "None"
         ], axis=1).tolist()
 )
 
