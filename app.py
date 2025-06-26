@@ -20,7 +20,7 @@ df = pd.read_csv("activities.csv", parse_dates=["start_date_local"])
 # for all runs with elevation_gain 0, use start_date instead of start_date_local
 df.loc[(df['type'] == 'Run') & (df['total_elevation_gain'] == 0), 'start_date_local'] = pd.to_datetime(df['start_date'])
 
-df = df[df["type"] != "Walk"]
+#df = df[df["type"] != "Walk"]
 df = df[df["start_date_local"] >= "2023-01-01"]
 
 df['type'] = df.apply(
@@ -54,6 +54,7 @@ color_map = {
     'Cardio': '#4bc0c0',      # Teal green
     'Weight Training': '#ff6384', # Bright pink
     'Hike': '#a8a8a8',        # Lighter gray
+    'Walk': '#97e084',        # Light green
 }
 
 # Add any missing activity types dynamically from the data
@@ -784,7 +785,8 @@ activity_emoji = {
     'Cardio': '💪',
     'Weight Training': '🏋️',
     'Hike': '🥾',
-    'Workout': '🤸'
+    'Workout': '🤸',
+    'Walk': '🚶'
 }
 
 # Find the "best" activity
