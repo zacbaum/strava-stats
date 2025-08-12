@@ -842,3 +842,4 @@ id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,s
 15398927074,Run,Afternoon Run,6170.5,2271,2276,30.8,2025-08-09T12:26:31Z,2025-08-09T13:26:31Z,"[51.676019, -0.607487]",482.9,159.8,179.0,170.6,153.2,2.717,3.96
 15398930714,WeightTraining,Morning Weight Training,0.0,2849,2849,0.0,2025-08-07T04:58:37Z,2025-08-07T05:58:37Z,[],,124.1,155.0,0.0,0.0,0.0,0.0
 15398930499,WeightTraining,Morning Weight Training,0.0,2880,2880,0.0,2025-08-05T06:04:12Z,2025-08-05T07:04:12Z,[],,125.9,167.0,0.0,0.0,0.0,0.0
+15425362360,WeightTraining,Afternoon Weight Training,0.0,2965,2965,0.0,2025-08-11T19:38:31Z,2025-08-11T15:38:31Z,[],,113.3,157.0,0.0,0.0,0.0,0.0
