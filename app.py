@@ -24,9 +24,10 @@ df.loc[(df['type'] == 'Run') & (df['total_elevation_gain'] == 0), 'start_date_lo
 df = df[df["start_date_local"] >= "2023-01-01"]
 
 df['type'] = df.apply(
-    lambda row: 'Pickleball' if row['type'] == 'Workout' and 'pickleball' in str(row.get('name', '')).lower()
-    else ('Cardio' if row['type'] == 'Workout' 
-          else ('Weight Training' if row['type'] == 'WeightTraining' else row['type'])),
+    lambda row: 'Racquet Sports' if row['type'] == 'Workout' and 'pickleball' in str(row.get('name', '')).lower()
+    else ('Racquet Sports' if row['type'] == 'Workout' and 'squash' in str(row.get('name', '')).lower()
+        else ('Cardio' if row['type'] == 'Workout' 
+            else ('Weight Training' if row['type'] == 'WeightTraining' else row['type']))),
     axis=1
 )
 
@@ -50,7 +51,7 @@ activity_types = df['type'].unique()
 color_map = {
     'Run': '#36a2eb',         # Brighter blue
     'Ride': '#ff9f40',        # Lighter orange
-    'Pickleball': '#b967ff',  # Brighter purple
+    'Racquet Sports': '#b967ff',  # Brighter purple
     'Cardio': '#4bc0c0',      # Teal green
     'Weight Training': '#ff6384', # Bright pink
     'Hike': '#a8a8a8',        # Lighter gray
@@ -781,7 +782,7 @@ recent_activities = df.sort_values("start_date_local", ascending=False).head(5)
 activity_emoji = {
     'Run': '🏃',
     'Ride': '🚴',
-    'Pickleball': '🏓',
+    'Racquet Sports': '🏓',
     'Cardio': '💪',
     'Weight Training': '🏋️',
     'Hike': '🥾',
