@@ -122,7 +122,7 @@ progress_percent = f"{year_progress:.1%}"
 # Compute Training Load for each activity (similar to Training Stress Score)
 df['training_load'] = df.apply(
     lambda row: row['duration_hr'] * (row.get('average_heartrate', 0) / 150)**2 * 100 
-    if pd.notnull(row.get('average_heartrate')) else row['duration_hr'] * 50,
+    if pd.notnull(row.get('average_heartrate')) else row['duration_hr'] * 100,
     axis=1
 )
 
