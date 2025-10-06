@@ -870,3 +870,6 @@ id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,s
 15972531480,WeightTraining,Morning Weight Training,0.0,3206,3206,0.0,2025-09-29T06:36:15Z,2025-09-29T07:36:15Z,[],,125.6,166.0,0.0,0.0,0.0,0.0
 15983546095,WeightTraining,Morning Weight Training,0.0,2944,2944,0.0,2025-09-30T06:42:04Z,2025-09-30T07:42:04Z,[],,156.7,187.0,0.0,0.0,0.0,0.0
 16005998444,WeightTraining,Morning Weight Training,0.0,2857,2857,0.0,2025-10-02T04:59:22Z,2025-10-02T05:59:22Z,[],,120.6,161.0,0.0,0.0,0.0,0.0
+16048828172,WeightTraining,Morning Weight Training,0.0,3213,3213,0.0,2025-10-06T05:58:27Z,2025-10-06T06:58:27Z,[],,113.6,158.0,0.0,0.0,0.0,0.0
+16040231160,Workout,Lunch Workout,0.0,4246,4246,0.0,2025-10-05T10:02:25Z,2025-10-05T11:02:25Z,[],,156.7,191.0,0.0,0.0,0.0,0.0
+16040230717,WeightTraining,Morning Weight Training,0.0,3152,3152,0.0,2025-10-04T08:13:12Z,2025-10-04T09:13:12Z,[],,120.7,152.0,0.0,0.0,0.0,0.0
