@@ -880,3 +880,4 @@ id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,s
 16115709193,Hike,Morning Hike,17422.2,13275,13533,233.6,2025-10-12T07:22:04Z,2025-10-12T08:22:04Z,"[51.675747, -0.607609]",,98.5,141.0,175.2,93.4,1.312,2.233
 16134793789,WeightTraining,Morning Weight Training,0.0,2821,2821,0.0,2025-10-14T06:43:19Z,2025-10-14T07:43:19Z,[],,107.7,155.0,0.0,0.0,0.0,0.0
 16145703984,WeightTraining,Morning Weight Training,0.0,2775,2775,0.0,2025-10-15T06:01:00Z,2025-10-15T07:01:00Z,[],,114.1,155.0,0.0,0.0,0.0,0.0
+16171554710,WeightTraining,Afternoon Weight Training,0.0,2760,2760,0.0,2025-10-17T15:30:53Z,2025-10-17T16:30:53Z,[],,94.8,132.0,0.0,0.0,0.0,0.0
