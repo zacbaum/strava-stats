@@ -881,3 +881,5 @@ id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,s
 16134793789,WeightTraining,Morning Weight Training,0.0,2821,2821,0.0,2025-10-14T06:43:19Z,2025-10-14T07:43:19Z,[],,107.7,155.0,0.0,0.0,0.0,0.0
 16145703984,WeightTraining,Morning Weight Training,0.0,2775,2775,0.0,2025-10-15T06:01:00Z,2025-10-15T07:01:00Z,[],,114.1,155.0,0.0,0.0,0.0,0.0
 16171554710,WeightTraining,Afternoon Weight Training,0.0,2760,2760,0.0,2025-10-17T15:30:53Z,2025-10-17T16:30:53Z,[],,94.8,132.0,0.0,0.0,0.0,0.0
+16198060707,WeightTraining,Morning Weight Training,0.0,3248,3248,0.0,2025-10-20T06:36:13Z,2025-10-20T07:36:13Z,[],,128.2,165.0,0.0,0.0,0.0,0.0
+16189171753,Workout,Battle Cancer 2025,0.0,5575,5575,0.0,2025-10-19T08:38:16Z,2025-10-19T09:38:16Z,[],,162.4,193.0,0.0,0.0,0.0,0.0
