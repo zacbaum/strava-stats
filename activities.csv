@@ -932,3 +932,4 @@ id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,s
 16903750677,Workout,Afternoon Workout,0.0,3017,3017,0.0,2026-01-01T14:16:27Z,2026-01-01T14:16:27Z,[],,146.4,162.0,0.0,0.0,0.0,0.0
 16914285600,WeightTraining,Afternoon Weight Training,0.0,3070,3070,0.0,2026-01-02T15:39:07Z,2026-01-02T15:39:07Z,[],,129.5,167.0,0.0,0.0,0.0,0.0
 16921061789,WeightTraining,Morning Weight Training,0.0,3347,3347,0.0,2026-01-03T09:15:44Z,2026-01-03T09:15:44Z,[],,115.7,164.0,0.0,0.0,0.0,0.0
+16942093167,WeightTraining,Morning Weight Training,0.0,3290,3290,0.0,2026-01-05T06:56:13Z,2026-01-05T06:56:13Z,[],,124.1,167.0,0.0,0.0,0.0,0.0
