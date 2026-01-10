@@ -936,3 +936,4 @@ id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,s
 16953311780,WeightTraining,Morning Weight Training,0.0,3077,3077,0.0,2026-01-06T07:42:30Z,2026-01-06T07:42:30Z,[],,128.8,175.0,0.0,0.0,0.0,0.0
 16959070983,Run,Afternoon Run,6132.6,2714,2806,46.6,2026-01-06T17:07:22Z,2026-01-06T17:07:22Z,"[51.676109, -0.607588]",515.8,144.0,167.0,169.8,140.8,2.26,4.82
 16975924022,WeightTraining,Morning Weight Training,0.0,2820,2820,0.0,2026-01-08T06:00:22Z,2026-01-08T06:00:22Z,[],,131.1,158.0,0.0,0.0,0.0,0.0
+16997881016,WeightTraining,Morning Weight Training,0.0,3299,3299,0.0,2026-01-10T09:07:26Z,2026-01-10T09:07:26Z,[],,132.8,170.0,0.0,0.0,0.0,0.0
