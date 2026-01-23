@@ -5,3 +5,4 @@ dash
 dash-bootstrap-components
 requests
 python-dotenv
+pytz
