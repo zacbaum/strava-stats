@@ -960,3 +960,5 @@ id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,s
 17338700122,WeightTraining,Morning Weight Training,0.0,2863,2863,0.0,2026-02-09T11:58:53Z,2026-02-09T07:58:53Z,[],,132.4,168.0,0.0,0.0,0.0,0.0
 17365255531,Workout,Lunch Pickleball,0.0,4153,4153,0.0,2026-02-11T16:50:05Z,2026-02-11T12:50:05Z,[],,139.6,168.0,0.0,0.0,0.0,0.0
 17362489140,WeightTraining,Morning Weight Training,0.0,3081,3081,0.0,2026-02-11T12:52:19Z,2026-02-11T08:52:19Z,[],,130.5,166.0,0.0,0.0,0.0,0.0
+17377479043,Workout,Afternoon Pickleball,0.0,4778,4778,0.0,2026-02-12T18:48:51Z,2026-02-12T14:48:51Z,[],,138.2,180.0,0.0,0.0,0.0,0.0
+17373124913,WeightTraining,Morning Weight Training,0.0,2912,2912,0.0,2026-02-12T12:08:04Z,2026-02-12T08:08:04Z,[],,127.5,160.0,0.0,0.0,0.0,0.0
