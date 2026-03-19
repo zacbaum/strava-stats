@@ -986,3 +986,4 @@ id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,s
 17719520628,Hike,Lunch Hike,11501.0,8579,8655,189.4,2026-03-14T11:25:43Z,2026-03-14T11:25:43Z,"[51.675838, -0.607522]",,,,153.8,77.8,1.341,5.2
 17739197456,WeightTraining,Morning Weight Training,0.0,3321,3321,0.0,2026-03-16T06:54:44Z,2026-03-16T06:54:44Z,[],,121.8,163.0,0.0,0.0,0.0,0.0
 17750940644,WeightTraining,Morning Weight Training,0.0,3330,3330,0.0,2026-03-17T07:36:49Z,2026-03-17T07:36:49Z,[],,138.4,191.0,0.0,0.0,0.0,0.0
+17775352189,WeightTraining,Morning Weight Training,0.0,2964,2964,0.0,2026-03-19T05:58:59Z,2026-03-19T05:58:59Z,[],,118.6,155.0,0.0,0.0,0.0,0.0
