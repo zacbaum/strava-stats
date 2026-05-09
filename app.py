@@ -60,14 +60,16 @@ prev_year = latest_year - 1
 
 colors = px.colors.qualitative.Set2
 activity_types = df['type'].unique()
+
+# Activity colors — harmonized for dark backgrounds, consistent saturation
 color_map = {
-    'Run': '#36a2eb',
-    'Ride': '#ff9f40',
-    'Racquet Sports': '#b967ff',
-    'Cardio': '#4bc0c0',
-    'Weight Training': '#ff6384',
-    'Hike': '#a8a8a8',
-    'Walk': '#97e084',
+    'Run':              '#3B82F6',  # blue
+    'Ride':             '#F59E0B',  # amber
+    'Racquet Sports':   '#A855F7',  # purple
+    'Cardio':           '#14B8A6',  # teal
+    'Weight Training':  '#EC4899',  # pink
+    'Hike':             '#94A3B8',  # slate
+    'Walk':             '#84CC16',  # lime
 }
 
 # Fill any activity types that aren't pre-mapped, cycling through Set2
@@ -75,24 +77,64 @@ missing_types = [t for t in activity_types if t not in color_map]
 for i, t in enumerate(missing_types):
     color_map[t] = colors[i % len(colors)]
 
-dark_bg_color = "#121212"
-dark_paper_color = "#1E1E1E"
-dark_text_color = "#FFFFFF"
-dark_grid_color = "#333333"
-muted_text_color = "#888888"
+# Surface palette — softer than pure white-on-black for less eye strain
+dark_bg_color = "#0F1115"
+dark_paper_color = "#181A20"
+dark_text_color = "#E5E7EB"
+dark_grid_color = "#262A33"
+muted_text_color = "#9CA3AF"
+
+# Semantic palette used across charts (form lines, rolling windows, trend dirs)
+SERIES = {
+    "fitness":    "#FFFFFF",
+    "fatigue":    "#FB923C",
+    "form":       "#4ADE80",
+    "form_zero":  "#4B5563",
+    "rolling_7":  "#60A5FA",
+    "rolling_28": "#A78BFA",
+    "rolling_365": "#FBBF24",
+    "fresh":      "#4ADE80",
+    "optimal":    "#60A5FA",
+    "productive": "#FACC15",
+    "overreach":  "#F87171",
+}
 
 # Single font stack used for HTML (via assets/style.css) and Plotly figures
 chart_font_family = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
 chart_font = dict(color=dark_text_color, family=chart_font_family)
+title_font = dict(color=dark_text_color, family=chart_font_family, size=15)
 
+# Master Plotly template — sets defaults so individual charts don't repeat them
 dark_template = dict(
     layout=dict(
         paper_bgcolor=dark_paper_color,
-        plot_bgcolor=dark_bg_color,
+        plot_bgcolor=dark_paper_color,
         font=chart_font,
-        xaxis=dict(gridcolor=dark_grid_color, zerolinecolor=dark_grid_color),
-        yaxis=dict(gridcolor=dark_grid_color, zerolinecolor=dark_grid_color),
-        legend=dict(font=chart_font)
+        title=dict(x=0.5, xanchor='center', y=0.97, yanchor='top', font=title_font),
+        margin=dict(l=20, r=20, t=60, b=20),
+        colorway=list(color_map.values()),
+        hoverlabel=dict(
+            bgcolor="#1F2937",
+            bordercolor=dark_grid_color,
+            font=dict(color=dark_text_color, family=chart_font_family, size=12),
+        ),
+        legend=dict(
+            font=chart_font,
+            bgcolor='rgba(0,0,0,0)',
+            orientation='h',
+            yanchor='bottom', y=1.02,
+            xanchor='right', x=1,
+        ),
+        xaxis=dict(
+            gridcolor=dark_grid_color, zerolinecolor=dark_grid_color,
+            linecolor=dark_grid_color, tickcolor=dark_grid_color,
+            showgrid=False,
+        ),
+        yaxis=dict(
+            gridcolor=dark_grid_color, zerolinecolor=dark_grid_color,
+            linecolor=dark_grid_color, tickcolor=dark_grid_color,
+            showgrid=True, gridwidth=1,
+        ),
     )
 )
 
@@ -387,13 +429,20 @@ app.title = "Strava Training Dashboard"
 def kpi_card(title, value, subtitle="", value_color=None):
     return dbc.Card(
         dbc.CardBody([
-            html.Div(title, className="text-uppercase small", style={"color": muted_text_color}),
-            html.Div(value, className="fw-bold",
-                     style={"fontSize": "1.8rem", "color": value_color or dark_text_color}),
-            html.Div(subtitle, className="small", style={"color": muted_text_color}),
-        ]),
-        className="text-center h-100",
-        style={"backgroundColor": dark_paper_color, "border": f"1px solid {dark_grid_color}"}
+            html.Div(title, className="text-uppercase",
+                     style={"color": muted_text_color, "fontSize": "0.72rem",
+                            "letterSpacing": "0.06em", "fontWeight": 500}),
+            html.Div(value, className="kpi-value mt-1",
+                     style={"fontSize": "1.75rem", "fontWeight": 600, "lineHeight": 1.1,
+                            "color": value_color or dark_text_color}),
+            html.Div(subtitle,
+                     style={"color": muted_text_color, "fontSize": "0.78rem",
+                            "marginTop": "0.25rem"}),
+        ], className="py-3"),
+        className="text-center h-100 kpi-card",
+        style={"backgroundColor": dark_paper_color,
+               "border": f"1px solid {dark_grid_color}",
+               "borderRadius": "10px"}
     )
 
 layout_kpi = dbc.Row([
@@ -409,68 +458,38 @@ layout_kpi = dbc.Row([
 ], className="g-3 mb-2")
 
 # 1. Activity Type Distribution Charts
+
+def _make_pie(data, title):
+    fig = px.pie(
+        data, names="type", values="duration_hr",
+        title=title, color="type", color_discrete_map=color_map, hole=0.55,
+    )
+    fig.update_traces(
+        texttemplate="%{value:.1f}h",
+        textfont=dict(color=dark_text_color, family=chart_font_family, size=12),
+        hovertemplate="%{label}: %{value:.1f}h (%{percent})<extra></extra>",
+        marker=dict(line=dict(color=dark_paper_color, width=2)),
+    )
+    fig.update_layout(template=dark_template, showlegend=False, height=320,
+                      margin=dict(l=10, r=10, t=60, b=10))
+    return fig
+
 layout_pie = dbc.Row([
-    dbc.Col(dcc.Graph(
-        figure=px.pie(
-            pie_df(),
-            names="type",
-            values="duration_hr",
-            title="🌟 All-Time Activity (Since 2023) 🌟",
-            color="type",
-            color_discrete_map=color_map,
-            hole=0.4
-        ).update_traces(
-            texttemplate="%{value:.1f}h",
-            hovertemplate="%{label}: %{value:.1f}h<extra></extra>"
-        ).update_layout(
-            template=dark_template,
-            showlegend=False
-        )
-    ), md=4),
+    dbc.Col(dcc.Graph(figure=_make_pie(pie_df(), "🌟 All-Time · Since 2023")), md=4),
+    dbc.Col(dcc.Graph(figure=_make_pie(pie_df("previous"),
+        f"🔙 {prev_year} · {prev_year_hours:.1f}h")), md=4),
     dbc.Col([
-        dcc.Graph(
-            figure=px.pie(
-                pie_df("previous"),
-                names="type",
-                values="duration_hr",
-                title=f"🔙 {prev_year} Activity ({prev_year_hours:.1f}h) 🔙",
-                color="type",
-                color_discrete_map=color_map,
-                hole=0.4
-            ).update_traces(
-                texttemplate="%{value:.1f}h",
-                hovertemplate="%{label}: %{value:.1f}h<extra></extra>"
-            ).update_layout(
-                template=dark_template,
-                showlegend=False
-            )
-        ),
-    ], md=4),
-    dbc.Col([
-        dcc.Graph(
-            figure=px.pie(
-                pie_df("YTD"),
-                names="type",
-                values="duration_hr",
-                title=f"🔥 {latest_year} YTD ({ytd_hours:.1f}h, {progress_percent} of year) 🔥",
-                color="type",
-                color_discrete_map=color_map,
-                hole=0.4
-            ).update_traces(
-                texttemplate="%{value:.1f}h",
-                hovertemplate="%{label}: %{value:.1f}h<extra></extra>"
-            ).update_layout(
-                template=dark_template,
-                showlegend=False
-            )
-        ),
+        dcc.Graph(figure=_make_pie(pie_df("YTD"),
+            f"🔥 {latest_year} YTD · {ytd_hours:.1f}h · {progress_percent} of year")),
         html.Div([
-            html.H5([
-                f"✨ Projected {latest_year}: {projected_hours:.1f}h ",
-                html.Span(f"{trend_emoji} {abs(projected_hours - prev_year_hours):.1f}h vs {prev_year}",
-                         style={"color": "lightgreen" if on_track else "#ff6b6b"})
-            ], className="text-center mt-2")
-        ])
+            html.Span(f"Projected {latest_year}: ",
+                      style={"color": muted_text_color}),
+            html.Span(f"{projected_hours:.1f}h ",
+                      style={"color": dark_text_color, "fontWeight": 600}),
+            html.Span(f"{trend_emoji} {abs(projected_hours - prev_year_hours):.1f}h vs {prev_year}",
+                      style={"color": SERIES["fresh"] if on_track else SERIES["overreach"],
+                             "fontWeight": 500})
+        ], className="text-center mt-1", style={"fontSize": "0.95rem"})
     ], md=4),
 ])
 
@@ -526,10 +545,10 @@ form_recent_start = today - timedelta(days=30)
 form_recent = daily_scores[daily_scores['date'] >= form_recent_start].copy()
 
 zone_specs = [
-    (5, 200, "Fresh", "#4ade80"),
-    (-10, 5, "Optimal", "#60a5fa"),
-    (-30, -10, "Productive", "#facc15"),
-    (-200, -30, "Overreaching", "#f87171"),
+    (5, 200, "Fresh", SERIES["fresh"]),
+    (-10, 5, "Optimal", SERIES["optimal"]),
+    (-30, -10, "Productive", SERIES["productive"]),
+    (-200, -30, "Overreaching", SERIES["overreach"]),
 ]
 
 form_recent_fig = go.Figure()
@@ -538,15 +557,15 @@ for y0, y1, _, hex_color in zone_specs:
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     form_recent_fig.add_hrect(
-        y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.13)",
+        y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.10)",
         line_width=0, layer="below"
     )
 
 form_recent_fig.add_trace(go.Scatter(
     x=form_recent['date'], y=form_recent['form'],
     mode="lines",
-    line=dict(color="#ffffff", width=3),
-    hovertemplate="%{x|%b %d}<br>Form: %{y:+.1f}<extra></extra>",
+    line=dict(color=SERIES["fitness"], width=2.5, shape="spline", smoothing=0.4),
+    hovertemplate="<b>%{x|%b %d}</b><br>Form: %{y:+.1f}<extra></extra>",
     name="Form (TSB)",
     showlegend=False
 ))
@@ -556,21 +575,21 @@ form_recent_fig.add_trace(go.Scatter(
     x=[form_recent['date'].iloc[-1]],
     y=[form_recent['form'].iloc[-1]],
     mode="markers",
-    marker=dict(color=form_color, size=14, line=dict(color="white", width=2)),
-    hovertemplate=f"Today: {current_form:+.1f}<br>{form_label}<extra></extra>",
+    marker=dict(color=form_color, size=14,
+                line=dict(color=dark_paper_color, width=2)),
+    hovertemplate=f"<b>Today</b>: {current_form:+.1f}<br>{form_label}<extra></extra>",
     showlegend=False
 ))
 
-form_recent_fig.add_hline(y=0, line=dict(color="#666", width=1, dash="dash"))
+form_recent_fig.add_hline(y=0, line=dict(color=SERIES["form_zero"], width=1, dash="dash"))
 
-# Zone labels on the right edge
 form_y_min = min(form_recent['form'].min(), -35) - 5
 form_y_max = max(form_recent['form'].max(), 12) + 5
 zone_label_positions = [
-    (max(form_y_max - 4, 8), "Fresh", "#4ade80"),
-    (-2.5, "Optimal", "#60a5fa"),
-    (-20, "Productive", "#facc15"),
-    (min(form_y_min + 4, -36), "Overreaching", "#f87171"),
+    (max(form_y_max - 4, 8), "Fresh", SERIES["fresh"]),
+    (-2.5, "Optimal", SERIES["optimal"]),
+    (-20, "Productive", SERIES["productive"]),
+    (min(form_y_min + 4, -36), "Overreaching", SERIES["overreach"]),
 ]
 for y, label, color in zone_label_positions:
     if form_y_min <= y <= form_y_max:
@@ -578,23 +597,18 @@ for y, label, color in zone_label_positions:
             xref="paper", x=1.0, y=y,
             xanchor="left", yanchor="middle",
             text=label, showarrow=False,
-            font=dict(color=color, size=10, family=chart_font_family),
+            font=dict(color=color, size=10, family=chart_font_family, weight=500),
             xshift=8
         )
 
 form_recent_fig.update_layout(
-    title_text=f"🎯 Form — Last 30 Days  &nbsp;<span style='color:{form_color}'>{current_form:+.0f} · {form_label}</span>",
-    paper_bgcolor=dark_paper_color,
-    plot_bgcolor=dark_bg_color,
-    font=chart_font,
-    xaxis=dict(showgrid=False, title_text=None),
-    yaxis=dict(
-        title_text="Form (TSB)",
-        gridcolor=dark_grid_color, zerolinecolor="#666",
-        range=[form_y_min, form_y_max]
-    ),
-    margin=dict(l=10, r=90, t=60, b=10),
-    height=320
+    template=dark_template,
+    title_text=f"🎯 Form · Last 30 Days &nbsp;&nbsp;<span style='color:{form_color}; font-weight:600'>{current_form:+.0f} · {form_label}</span>",
+    xaxis=dict(title_text=None),
+    yaxis=dict(title_text="Form (TSB)", range=[form_y_min, form_y_max]),
+    margin=dict(l=20, r=85, t=60, b=20),
+    height=320,
+    showlegend=False,
 )
 
 layout_form_recent = dbc.Row([dbc.Col(dcc.Graph(figure=form_recent_fig), md=12)])
@@ -611,62 +625,51 @@ def build_fitness_fig(start_date):
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Stacked monthly bars
     for activity_type in df['type'].unique():
         activity_data = ma[ma['type'] == activity_type]
         fig.add_trace(
             go.Bar(
-                x=activity_data['month'],
-                y=activity_data['duration_hr'],
+                x=activity_data['month'], y=activity_data['duration_hr'],
                 name=activity_type,
-                marker_color=color_map.get(activity_type, '#333333'),
-                hovertemplate=f"{activity_type}: %{{y:.1f}}h<br>%{{x|%b %Y}}<extra></extra>",
-                showlegend=False
+                marker=dict(color=color_map.get(activity_type, '#666666'),
+                            line=dict(width=0)),
+                opacity=0.85,
+                hovertemplate=f"<b>{activity_type}</b>: %{{y:.1f}}h<br>%{{x|%b %Y}}<extra></extra>",
+                showlegend=False,
             ),
             secondary_y=False
         )
 
     fig.add_trace(go.Scatter(
-        x=ds['date'], y=ds['fitness'],
-        name="Fitness (CTL, 42d)",
-        line=dict(color="#ffffff", width=2.5),
-        hovertemplate="Fitness: %{y:.0f}<extra></extra>"
+        x=ds['date'], y=ds['fitness'], name="Fitness (CTL · 42d)",
+        line=dict(color=SERIES["fitness"], width=2.5),
+        hovertemplate="Fitness: %{y:.0f}<extra></extra>",
     ), secondary_y=True)
     fig.add_trace(go.Scatter(
-        x=ds['date'], y=ds['fatigue'],
-        name="Fatigue (ATL, 7d)",
-        line=dict(color="#ff9f40", width=1.5, dash="dot"),
-        hovertemplate="Fatigue: %{y:.0f}<extra></extra>"
+        x=ds['date'], y=ds['fatigue'], name="Fatigue (ATL · 7d)",
+        line=dict(color=SERIES["fatigue"], width=1.6, dash="dot"),
+        hovertemplate="Fatigue: %{y:.0f}<extra></extra>",
     ), secondary_y=True)
     fig.add_trace(go.Scatter(
-        x=ds['date'], y=ds['form'],
-        name="Form (TSB)",
-        line=dict(color="#4ade80", width=1.5),
-        hovertemplate="Form: %{y:+.0f}<extra></extra>"
+        x=ds['date'], y=ds['form'], name="Form (TSB)",
+        line=dict(color=SERIES["form"], width=1.6),
+        hovertemplate="Form: %{y:+.0f}<extra></extra>",
     ), secondary_y=True)
-    fig.add_hline(y=0, line=dict(color="#666666", width=1, dash="dash"), secondary_y=True)
+    fig.add_hline(y=0, line=dict(color=SERIES["form_zero"], width=1, dash="dash"),
+                  secondary_y=True)
 
     fig.update_layout(
-        title_text="💪 Fitness, Fatigue & Form 📈",
+        template=dark_template,
+        title_text="💪 Fitness · Fatigue · Form",
         barmode='stack',
         hovermode="x unified",
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                    font=chart_font),
-        paper_bgcolor=dark_paper_color,
-        plot_bgcolor=dark_bg_color,
-        font=chart_font,
-        xaxis=dict(showgrid=False, zerolinecolor=dark_bg_color, title_text=None),
-        margin=dict(l=10, r=10, t=60, b=10)
+        margin=dict(l=20, r=20, t=70, b=20),
+        height=440,
     )
-    fig.update_yaxes(
-        title_text="Hours", secondary_y=False, showgrid=True,
-        gridwidth=1, gridcolor=dark_grid_color, minor_showgrid=False, rangemode="tozero"
-    )
-    fig.update_yaxes(
-        title_text="Score", secondary_y=True, title_font=dict(color="#ffffff"),
-        showgrid=False, minor_showgrid=False
-    )
+    fig.update_yaxes(title_text="Hours", secondary_y=False, rangemode="tozero")
+    fig.update_yaxes(title_text="Score", secondary_y=True, showgrid=False)
+    fig.update_xaxes(title_text=None)
     return fig
 
 layout_fitness = dbc.Row([dbc.Col(dcc.Graph(id='fitness-graph', figure=build_fitness_fig(None)), md=12)])
@@ -689,33 +692,29 @@ def build_rolling_fig(start_date):
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=list(x), y=y7,
-        name="Week (7d)", line=dict(color="#36a2eb", width=2),
-        hovertemplate="7d: %{y:.1f} h/wk<extra></extra>"
+        x=list(x), y=y365, name="Year (365d avg)",
+        line=dict(color=SERIES["rolling_365"], width=2.5),
+        hovertemplate="<b>Year</b>: %{y:.1f} h/wk<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
-        x=list(x), y=y28,
-        name="Month (28d avg)", line=dict(color="#ff9f40", width=2),
-        hovertemplate="28d avg: %{y:.1f} h/wk<extra></extra>"
+        x=list(x), y=y28, name="Month (28d avg)",
+        line=dict(color=SERIES["rolling_28"], width=2),
+        hovertemplate="<b>Month</b>: %{y:.1f} h/wk<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
-        x=list(x), y=y365,
-        name="Year (365d avg)", line=dict(color="#b967ff", width=2),
-        hovertemplate="365d avg: %{y:.1f} h/wk<extra></extra>"
+        x=list(x), y=y7, name="Week (7d)",
+        line=dict(color=SERIES["rolling_7"], width=1.6),
+        hovertemplate="<b>Week</b>: %{y:.1f} h/wk<extra></extra>",
     ))
     fig.update_layout(
-        title_text="⏳ Rolling Training Volume (hours per week) ⏳",
+        template=dark_template,
+        title_text="⏳ Rolling Training Volume (h/week)",
         hovermode="x unified",
-        paper_bgcolor=dark_paper_color,
-        plot_bgcolor=dark_bg_color,
-        font=chart_font,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                    font=chart_font),
-        xaxis=dict(showgrid=False, title_text=None),
-        yaxis=dict(showgrid=True, gridcolor=dark_grid_color, title_text="Hours / week",
-                   rangemode="tozero"),
-        margin=dict(l=10, r=10, t=60, b=10)
+        showlegend=True,
+        height=360,
     )
+    fig.update_xaxes(title_text=None)
+    fig.update_yaxes(title_text="Hours / week", rangemode="tozero")
     return fig
 
 layout_rolling = dbc.Row([dbc.Col(dcc.Graph(id='rolling-graph', figure=build_rolling_fig(None)), md=12)])
@@ -731,22 +730,29 @@ def build_heatmap_fig(start_date):
     )
     fig = go.Figure(data=go.Heatmap(
         z=pivot.values,
-        x=[f"{h:02d}:00" for h in range(24)],
+        x=[f"{h:02d}" for h in range(24)],
         y=weekday_order,
-        colorscale="Plasma",
-        hovertemplate="%{y} %{x}<br>%{z:.1f} hours<extra></extra>",
-        colorbar=dict(title="Hours")
+        colorscale=[
+            [0.00, dark_paper_color],
+            [0.05, "#1F2937"],
+            [0.30, "#4338CA"],
+            [0.60, "#A855F7"],
+            [0.85, "#F97316"],
+            [1.00, "#FACC15"],
+        ],
+        hovertemplate="<b>%{y} · %{x}:00</b><br>%{z:.1f} hours<extra></extra>",
+        colorbar=dict(title=dict(text="Hours", font=dict(size=11)),
+                      thickness=12, len=0.8, outlinewidth=0,
+                      tickfont=dict(size=10)),
+        xgap=2, ygap=2,
     ))
     fig.update_layout(
-        title_text="🔥 When Do You Train? (Day × Hour) 🔥",
-        paper_bgcolor=dark_paper_color,
-        plot_bgcolor=dark_bg_color,
-        font=chart_font,
-        xaxis=dict(showgrid=False, title_text=None, tickfont=dict(size=10)),
-        yaxis=dict(showgrid=False, title_text=None, autorange="reversed"),
-        margin=dict(l=10, r=10, t=60, b=10),
-        height=360
+        template=dark_template,
+        title_text="🕓 When Do You Train? · Day × Hour",
+        height=380,
     )
+    fig.update_xaxes(title_text=None, tickfont=dict(size=11), showgrid=False)
+    fig.update_yaxes(title_text=None, autorange="reversed", showgrid=False)
     return fig
 
 layout_heatmap = dbc.Row([dbc.Col(dcc.Graph(id='heatmap-graph', figure=build_heatmap_fig(None)), md=12)])
@@ -791,39 +797,39 @@ def build_cumulative_count_fig(start_date):
     pivot = _build_cumulative_pivot(start_date, "activity_count")
     if pivot is None:
         return _empty_fig("No activities in range")
-    return px.area(
+    fig = px.area(
         pivot, x="date", y=pivot.columns[1:],
-        title="🏆 What Activities Are You Doing Most? 🏆",
+        title="🏆 Activity Mix · Cumulative Count",
         color_discrete_map=color_map,
-        labels={"value": "Count", "date": "", "variable": "Activity Type"}
-    ).update_traces(
-        hovertemplate="%{y:.1f} activities - %{fullData.name}<br>%{x|%b %d, %Y}<extra></extra>"
-    ).update_layout(
-        template=dark_template,
-        showlegend=False,
-        xaxis=dict(showgrid=False, title_text=None),
-        yaxis=dict(showgrid=True, title_text=None, gridwidth=1,
-                   gridcolor=dark_grid_color, minor_showgrid=False)
+        labels={"value": "Count", "date": "", "variable": "Activity Type"},
     )
+    fig.update_traces(
+        hovertemplate="<b>%{fullData.name}</b>: %{y:.0f}<br>%{x|%b %d, %Y}<extra></extra>",
+        line=dict(width=0),
+    )
+    fig.update_layout(template=dark_template, showlegend=False, height=340)
+    fig.update_xaxes(title_text=None)
+    fig.update_yaxes(title_text=None)
+    return fig
 
 def build_cumulative_time_fig(start_date):
     pivot = _build_cumulative_pivot(start_date, "duration_hr")
     if pivot is None:
         return _empty_fig("No activities in range")
-    return px.area(
+    fig = px.area(
         pivot, x="date", y=pivot.columns[1:],
-        title="⏱️ Training Hours Accumulation ⏱️",
+        title="⏱️ Training Hours · Cumulative",
         color_discrete_map=color_map,
-        labels={"value": "Hours", "date": "", "variable": "Activity Type"}
-    ).update_traces(
-        hovertemplate="%{y:.1f} hours - %{fullData.name}<br>%{x|%b %d, %Y}<extra></extra>"
-    ).update_layout(
-        template=dark_template,
-        showlegend=False,
-        xaxis=dict(showgrid=False, title_text=None),
-        yaxis=dict(showgrid=True, title_text=None, gridwidth=1,
-                   gridcolor=dark_grid_color, minor_showgrid=False)
+        labels={"value": "Hours", "date": "", "variable": "Activity Type"},
     )
+    fig.update_traces(
+        hovertemplate="<b>%{fullData.name}</b>: %{y:.1f}h<br>%{x|%b %d, %Y}<extra></extra>",
+        line=dict(width=0),
+    )
+    fig.update_layout(template=dark_template, showlegend=False, height=340)
+    fig.update_xaxes(title_text=None)
+    fig.update_yaxes(title_text=None)
+    return fig
 
 layout_cumulative = dbc.Row([
     dbc.Col(dcc.Graph(id='cumulative-count-graph',
@@ -847,19 +853,19 @@ layout_scatter = dbc.Row([
             run_df,
             x="date", y="pace_min_per_km",
             size="distance", color="average_heartrate",
-            title="🏃‍♂️ Run Pace Timeline 🏃‍♀️",
+            title="🏃 Run Pace Over Time",
             labels={"pace_min_per_km": "Pace", "date": "",
                     "average_heartrate": "Avg HR", "distance": "Distance (m)"},
             color_continuous_scale="RdYlBu_r",
             hover_data=["name", "distance", "average_heartrate", "moving_time"]
         ).update_traces(
-            marker=dict(opacity=0.7),
+            marker=dict(opacity=0.75, line=dict(width=0.5, color=dark_paper_color),
+                        sizemin=4),
             selector=dict(mode='markers'),
             hovertemplate=
-                "Pace: %{customdata[0]} /km<br>"
-                "Distance: %{customdata[1]:.1f} km<br>"
-                "Avg HR: %{customdata[2]}<br>"
-                "Time: %{customdata[3]}<extra></extra>",
+                "<b>%{customdata[0]} /km</b><br>"
+                "%{customdata[1]:.1f} km · %{customdata[3]}<br>"
+                "Avg HR: %{customdata[2]}<extra></extra>",
             customdata=run_df.apply(lambda x: [
                 _safe_pace_str(x['pace_min_per_km']),
                 (x['distance'] or 0) / 1000,
@@ -868,14 +874,17 @@ layout_scatter = dbc.Row([
             ], axis=1).tolist()
         ).update_layout(
             template=dark_template,
-            xaxis=dict(showgrid=False, title_text=None),
+            height=440,
+            xaxis=dict(title_text=None),
             yaxis=dict(
-                showgrid=True, title_text="Pace (min/km)",
-                gridwidth=1, gridcolor=dark_grid_color, minor_showgrid=False,
-                autorange="reversed",
-                tickvals=pace_ticks, ticktext=pace_tick_labels
+                title_text="Pace (min/km)", autorange="reversed",
+                tickvals=pace_ticks, ticktext=pace_tick_labels,
             ),
-            coloraxis_colorbar=dict(tickformat="d")
+            coloraxis_colorbar=dict(
+                title=dict(text="Avg HR", font=dict(size=11)),
+                thickness=12, len=0.8, outlinewidth=0,
+                tickformat="d", tickfont=dict(size=10),
+            ),
         )
     ), md=6),
 
@@ -886,18 +895,18 @@ layout_scatter = dbc.Row([
             color="year_str", size="distance",
             color_discrete_map=year_color_map,
             category_orders={"year_str": [str(y) for y in sorted_years]},
-            title="❤️ Run Efficiency ⚡",
+            title="❤️ Run Efficiency · Pace vs HR",
             labels={"pace_min_per_km": "Pace", "average_heartrate": "Avg HR (bpm)",
                     "year_str": "Year", "distance": "Distance (m)"},
             hover_data=["name", "date", "distance", "moving_time"]
         ).update_traces(
-            marker=dict(opacity=0.75, line=dict(width=0.5, color='white')),
+            marker=dict(opacity=0.78, line=dict(width=0.5, color=dark_paper_color),
+                        sizemin=4),
             selector=dict(mode='markers'),
             hovertemplate=
-                "%{customdata[0]} /km @ %{x:.0f} bpm<br>"
-                "%{customdata[1]}<br>"
-                "Distance: %{customdata[2]:.1f} km<br>"
-                "Time: %{customdata[3]}<extra></extra>",
+                "<b>%{customdata[0]} /km @ %{x:.0f} bpm</b><br>"
+                "%{customdata[2]:.1f} km · %{customdata[3]}<br>"
+                "%{customdata[1]}<extra></extra>",
             customdata=run_df.apply(lambda x: [
                 _safe_pace_str(x['pace_min_per_km']),
                 x['date'],
@@ -906,16 +915,13 @@ layout_scatter = dbc.Row([
             ], axis=1).tolist()
         ).update_layout(
             template=dark_template,
-            xaxis=dict(showgrid=True, title_text="Avg HR (bpm)",
-                       gridwidth=1, gridcolor=dark_grid_color, title_font=dict(size=12)),
+            height=440,
+            xaxis=dict(title_text="Avg HR (bpm)", showgrid=True),
             yaxis=dict(
-                showgrid=True, title_text="Pace (min/km)",
-                gridwidth=1, gridcolor=dark_grid_color, minor_showgrid=False,
-                autorange="reversed", title_font=dict(size=12),
-                tickvals=pace_ticks, ticktext=pace_tick_labels
+                title_text="Pace (min/km)", autorange="reversed",
+                tickvals=pace_ticks, ticktext=pace_tick_labels,
             ),
-            legend=dict(title="Year", orientation="h", yanchor="bottom", y=1.02,
-                        xanchor="right", x=1)
+            legend=dict(title=dict(text="Year")),
         )
     ), md=6)
 ])
@@ -966,29 +972,30 @@ bubble_fig = px.scatter(
     x='weekday', y='week_number',
     size='bubble_size', color='avg_hr',
     color_continuous_scale='RdYlBu_r',
-    title='📅 Workout Calendar — Last 8 Weeks 🗓️',
+    title='📅 Workout Calendar · Last 8 Weeks',
     labels={'weekday': 'Day of Week', 'week_number': 'Week',
             'avg_hr': 'Avg HR (bpm)', 'duration_hr': 'Hours'},
-    size_max=60,
+    size_max=55,
     color_continuous_midpoint=midpoint_hr,
     range_color=[min_hr, max_hr]
 )
 bubble_fig.update_traces(
-    hovertemplate="Date: %{customdata[0]}<br>Time: %{customdata[1]}<br>"
-                  "Avg HR: %{customdata[2]}<br>Activities: %{customdata[3]}",
+    marker=dict(line=dict(width=0.5, color=dark_paper_color)),
+    hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]} · %{customdata[2]} bpm<br>%{customdata[3]}<extra></extra>",
     customdata=calendar_df.apply(lambda x: [
-        x['date'].strftime('%b %d, %Y'),
-        f"{int(x['duration_hr'] * 60)}:{int((x['duration_hr'] * 60 % 1) * 60):02d}" if x['duration_hr'] > 0 else "0:00",
-        f"{int(x['avg_hr'])}" if x['avg_hr'] > 0 else "N/A",
-        x['activity_types'] if x['activity_types'] else "None"
+        x['date'].strftime('%a · %b %d'),
+        f"{int(x['duration_hr'] * 60)}:{int((x['duration_hr'] * 60 % 1) * 60):02d}" if x['duration_hr'] > 0 else "—",
+        f"{int(x['avg_hr'])}" if x['avg_hr'] > 0 else "—",
+        x['activity_types'] if x['activity_types'] else "rest"
     ], axis=1).tolist()
 )
 # Week labels: actual week-of dates rather than "Week 0"
 week_starts = [start_date + timedelta(weeks=w) for w in range(9)]
-week_tick_labels = [w.strftime("Wk of %b %d") for w in week_starts]
+week_tick_labels = [w.strftime("%b %d") for w in week_starts]
 
 bubble_fig.update_layout(
     template=dark_template,
+    height=420,
     xaxis=dict(
         tickmode='array',
         tickvals=[0, 1, 2, 3, 4, 5, 6],
@@ -999,10 +1006,13 @@ bubble_fig.update_layout(
         tickmode='array',
         tickvals=list(range(0, 9)),
         ticktext=week_tick_labels,
-        showgrid=True, title_text=None,
-        gridwidth=1, gridcolor=dark_grid_color, minor_showgrid=False,
-        autorange='reversed'
-    )
+        title_text=None, autorange='reversed',
+    ),
+    coloraxis_colorbar=dict(
+        title=dict(text="Avg HR", font=dict(size=11)),
+        thickness=12, len=0.8, outlinewidth=0,
+        tickformat="d", tickfont=dict(size=10),
+    ),
 )
 layout_bubble = dbc.Row([dbc.Col(dcc.Graph(figure=bubble_fig), md=12)])
 
@@ -1089,12 +1099,20 @@ layout_yoy = dbc.Row([
 def pr_card(title, value, subtitle=""):
     return dbc.Card(
         dbc.CardBody([
-            html.Div(title, className="text-uppercase small", style={"color": muted_text_color}),
-            html.Div(value, className="fw-bold", style={"fontSize": "1.4rem"}),
-            html.Div(subtitle, className="small", style={"color": muted_text_color}),
-        ]),
-        className="text-center h-100",
-        style={"backgroundColor": dark_paper_color, "border": f"1px solid {dark_grid_color}"}
+            html.Div(title, className="text-uppercase",
+                     style={"color": muted_text_color, "fontSize": "0.72rem",
+                            "letterSpacing": "0.06em", "fontWeight": 500}),
+            html.Div(value, className="pr-value mt-1",
+                     style={"fontSize": "1.35rem", "fontWeight": 600, "lineHeight": 1.2,
+                            "color": dark_text_color}),
+            html.Div(subtitle,
+                     style={"color": muted_text_color, "fontSize": "0.78rem",
+                            "marginTop": "0.25rem"}),
+        ], className="py-3"),
+        className="text-center h-100 pr-card",
+        style={"backgroundColor": dark_paper_color,
+               "border": f"1px solid {dark_grid_color}",
+               "borderRadius": "10px"}
     )
 
 def _fmt_longest(row):
@@ -1132,7 +1150,7 @@ layout_prs = html.Div([
 
 # Final app layout
 app.layout = dbc.Container([
-    html.H1("Strava Activity Dashboard 🏃‍♂️📊", className="text-center my-4"),
+    html.H1("Strava Training Dashboard", className="text-center my-4 dashboard-title"),
     layout_kpi,
     html.Hr(),
     layout_pie,
