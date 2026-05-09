@@ -30,9 +30,12 @@ def main():
         'total_elevation_gain', 'start_date', 'start_date_local', 'start_latlng', 'kilojoules',
         'average_heartrate', 'max_heartrate', 'elev_high', 'elev_low',
         'average_speed', 'max_speed',
-        # Location text fields — populated by Strava for activities started on
-        # a phone with geolocation, including most indoor sessions.
+        # Location text fields — Strava sometimes populates these (currently
+        # returns None for most activities, but kept for future-proofing).
         'location_city', 'location_state', 'location_country',
+        # IANA timezone is populated for every activity — used as the primary
+        # fallback location when start_latlng is empty (indoor sessions etc.).
+        'timezone',
     ]
 
     # Step 1: Get access token using refresh token

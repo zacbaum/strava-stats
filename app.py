@@ -67,51 +67,6 @@ _latlng = df['start_latlng'].apply(_parse_latlng)
 df['lat'] = _latlng.apply(lambda x: x[0])
 df['lng'] = _latlng.apply(lambda x: x[1])
 
-# Defensive: fill in location text columns if the CSV pre-dates the get_data.py
-# update that started fetching them.
-for _col in ('location_city', 'location_state', 'location_country'):
-    if _col not in df.columns:
-        df[_col] = pd.NA
-
-# Centroid-based fallback: if an activity has no GPS but does have a city /
-# state / country, place it at the mean of any GPS-tagged activities the user
-# has logged in the same place. Falls back from city → state → country if a
-# finer match isn't available. Yields city-level pins for indoor activities
-# without needing external geocoding.
-def _build_centroid_lookup(group_cols):
-    has_both = df[df['lat'].notna() & df[group_cols[0]].notna()]
-    if has_both.empty:
-        return {}
-    g = has_both.groupby(list(group_cols))[['lat', 'lng']].mean()
-    out = {}
-    for idx, row in g.iterrows():
-        key = idx if isinstance(idx, tuple) else (idx,)
-        out[key] = (row['lat'], row['lng'])
-    return out
-
-_city_centroids = _build_centroid_lookup(['location_city', 'location_state', 'location_country'])
-_state_centroids = _build_centroid_lookup(['location_state', 'location_country'])
-_country_centroids = _build_centroid_lookup(['location_country'])
-
-def _fill_latlng(row):
-    if pd.notna(row['lat']) and pd.notna(row['lng']):
-        return (row['lat'], row['lng'], False)
-    city_key = (row['location_city'], row['location_state'], row['location_country'])
-    if all(pd.notna(k) for k in city_key) and city_key in _city_centroids:
-        return (*_city_centroids[city_key], True)
-    state_key = (row['location_state'], row['location_country'])
-    if all(pd.notna(k) for k in state_key) and state_key in _state_centroids:
-        return (*_state_centroids[state_key], True)
-    country_key = (row['location_country'],)
-    if pd.notna(country_key[0]) and country_key in _country_centroids:
-        return (*_country_centroids[country_key], True)
-    return (None, None, False)
-
-_filled = df.apply(_fill_latlng, axis=1)
-df['lat_final'] = _filled.apply(lambda x: x[0])
-df['lng_final'] = _filled.apply(lambda x: x[1])
-df['is_approx_loc'] = _filled.apply(lambda x: x[2])
-
 today = datetime.now().date()
 latest_year = df['year'].max()
 prev_year = latest_year - 1
@@ -1177,7 +1132,7 @@ def _pace_sparkline(progression, accent_color):
     ))
     fig.update_layout(
         margin=dict(l=0, r=0, t=4, b=4),
-        height=44,
+        height=56,
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         font=chart_font,
         xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, fixedrange=True),
@@ -1200,7 +1155,7 @@ def _distribution_spark(values, pr_value, accent_color, unit="km", value_fmt=".1
     fig = go.Figure()
     fig.add_trace(go.Histogram(
         x=values,
-        nbinsx=min(18, max(5, len(values) // 4)),
+        nbinsx=max(10, min(24, len(values) // 5)),
         marker=dict(color="#374151", line=dict(width=0)),
         opacity=0.9,
         showlegend=False,
@@ -1209,7 +1164,7 @@ def _distribution_spark(values, pr_value, accent_color, unit="km", value_fmt=".1
     fig.add_vline(x=pr_value, line=dict(color=accent_color, width=2))
     fig.update_layout(
         margin=dict(l=0, r=0, t=4, b=4),
-        height=44,
+        height=56,
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         font=chart_font,
         xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, fixedrange=True),
@@ -1237,7 +1192,7 @@ def pr_card(title, value, subtitle="", spark=None):
         body.append(dcc.Graph(
             figure=spark,
             config={'displayModeBar': False, 'staticPlot': False},
-            style={'height': '44px', 'marginTop': '6px'},
+            style={'height': '56px', 'marginTop': '6px'},
         ))
     return dbc.Card(
         dbc.CardBody(body, className="py-3"),
@@ -1358,10 +1313,15 @@ _insights = []
 _thirty_back = today - timedelta(days=30)
 _past_row = daily_scores[daily_scores['date'] == _thirty_back]
 if not _past_row.empty:
-    _delta = current_fitness - _past_row['fitness'].iloc[0]
-    _verb = "added" if _delta >= 0 else "lost"
+    _past_fitness = _past_row['fitness'].iloc[0]
+    _delta = current_fitness - _past_fitness
+    _verb = "climbed" if _delta >= 0 else "dropped"
+    _sign = "+" if _delta >= 0 else "−"
     _insights.append(
-        ("🏋️", f"You've **{_verb} {abs(_delta):.0f} fitness points** in the last 30 days.")
+        ("🏋️",
+         f"Your **fitness score** (CTL — your 42-day rolling training load) has "
+         f"**{_verb} from {_past_fitness:.0f} to {current_fitness:.0f}** in the last 30 days "
+         f"({_sign}{abs(_delta):.0f}).")
     )
 
 # 2) Most common training day
@@ -1506,48 +1466,26 @@ layout_yoy_trajectory = dbc.Row([dbc.Col(dcc.Graph(figure=yoy_fig), md=12)])
 # MAP — where you train
 #######################
 
-map_df = df[df['lat_final'].notna() & df['lng_final'].notna()].copy()
+map_df = df[df['lat'].notna() & df['lng'].notna()].copy()
 if not map_df.empty:
     map_df['date_str'] = map_df['date'].astype(str)
     map_df['hours_str'] = map_df['duration_hr'].apply(lambda x: f"{x:.2f}")
 
-    def _loc_label(row):
-        if not row['is_approx_loc']:
-            return "GPS"
-        for k in ('location_city', 'location_state', 'location_country'):
-            v = row.get(k)
-            if pd.notna(v):
-                return f"~ {v}"
-        return "approximate"
-    map_df['loc_label'] = map_df.apply(_loc_label, axis=1)
-
-    _gps_count = int((~map_df['is_approx_loc']).sum())
-    _approx_count = int(map_df['is_approx_loc'].sum())
-    _missing = len(df) - len(map_df)
-    if _approx_count:
-        _coverage_text = (
-            f"{_gps_count} GPS-tagged · {_approx_count} city-approx · {_missing} unmapped"
-        )
-    else:
-        _coverage_text = (
-            f"{_gps_count} of {len(df)} activities · indoor sessions don't record GPS"
-        )
     _gps_coverage = (
         f"<span style='font-size: 0.65em; color:{muted_text_color}; font-weight:400'>"
-        f"{_coverage_text}"
+        f"{len(map_df)} of {len(df)} activities · indoor sessions don't record GPS"
         "</span>"
     )
     _map_title = f"🌍 Where Do You Train?<br>{_gps_coverage}"
     _map_kwargs = dict(
-        data_frame=map_df, lat='lat_final', lon='lng_final',
+        data_frame=map_df, lat='lat', lon='lng',
         color='type', color_discrete_map=color_map,
         size='duration_hr', size_max=14,
         opacity=0.7,
         hover_name='name',
-        hover_data={'date_str': True, 'hours_str': True, 'loc_label': True,
-                    'type': False, 'lat_final': False, 'lng_final': False,
-                    'duration_hr': False},
-        labels={'date_str': 'Date', 'hours_str': 'Hours', 'loc_label': 'Location'},
+        # Empty hover_data — we set everything via custom hovertemplate below
+        # so no DataFrame columns can leak through (timezone, location_*, etc).
+        hover_data={c: False for c in map_df.columns if c != 'name'},
         zoom=1.2,
         title=_map_title,
     )
@@ -1555,6 +1493,17 @@ if not map_df.empty:
         map_fig = px.scatter_map(map_style='carto-darkmatter', **_map_kwargs)
     else:
         map_fig = px.scatter_mapbox(mapbox_style='carto-darkmatter', **_map_kwargs)
+
+    # Lock the hover content explicitly via customdata so no other DataFrame
+    # columns (raw timezone strings etc.) can ever appear in tooltips.
+    for trace in map_fig.data:
+        type_name = trace.name
+        sub = map_df[map_df['type'] == type_name]
+        trace.customdata = sub[['date_str', 'hours_str']].values
+        trace.hovertemplate = (
+            "<b>%{hovertext}</b><br>"
+            "%{customdata[0]} · %{customdata[1]}h<extra></extra>"
+        )
     map_fig.update_layout(
         template=dark_template,
         height=460,
