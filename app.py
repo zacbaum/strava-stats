@@ -67,6 +67,51 @@ _latlng = df['start_latlng'].apply(_parse_latlng)
 df['lat'] = _latlng.apply(lambda x: x[0])
 df['lng'] = _latlng.apply(lambda x: x[1])
 
+# Defensive: fill in location text columns if the CSV pre-dates the get_data.py
+# update that started fetching them.
+for _col in ('location_city', 'location_state', 'location_country'):
+    if _col not in df.columns:
+        df[_col] = pd.NA
+
+# Centroid-based fallback: if an activity has no GPS but does have a city /
+# state / country, place it at the mean of any GPS-tagged activities the user
+# has logged in the same place. Falls back from city → state → country if a
+# finer match isn't available. Yields city-level pins for indoor activities
+# without needing external geocoding.
+def _build_centroid_lookup(group_cols):
+    has_both = df[df['lat'].notna() & df[group_cols[0]].notna()]
+    if has_both.empty:
+        return {}
+    g = has_both.groupby(list(group_cols))[['lat', 'lng']].mean()
+    out = {}
+    for idx, row in g.iterrows():
+        key = idx if isinstance(idx, tuple) else (idx,)
+        out[key] = (row['lat'], row['lng'])
+    return out
+
+_city_centroids = _build_centroid_lookup(['location_city', 'location_state', 'location_country'])
+_state_centroids = _build_centroid_lookup(['location_state', 'location_country'])
+_country_centroids = _build_centroid_lookup(['location_country'])
+
+def _fill_latlng(row):
+    if pd.notna(row['lat']) and pd.notna(row['lng']):
+        return (row['lat'], row['lng'], False)
+    city_key = (row['location_city'], row['location_state'], row['location_country'])
+    if all(pd.notna(k) for k in city_key) and city_key in _city_centroids:
+        return (*_city_centroids[city_key], True)
+    state_key = (row['location_state'], row['location_country'])
+    if all(pd.notna(k) for k in state_key) and state_key in _state_centroids:
+        return (*_state_centroids[state_key], True)
+    country_key = (row['location_country'],)
+    if pd.notna(country_key[0]) and country_key in _country_centroids:
+        return (*_country_centroids[country_key], True)
+    return (None, None, False)
+
+_filled = df.apply(_fill_latlng, axis=1)
+df['lat_final'] = _filled.apply(lambda x: x[0])
+df['lng_final'] = _filled.apply(lambda x: x[1])
+df['is_approx_loc'] = _filled.apply(lambda x: x[2])
+
 today = datetime.now().date()
 latest_year = df['year'].max()
 prev_year = latest_year - 1
@@ -204,7 +249,15 @@ year_progress = day_of_year / (366 if today.year % 4 == 0 else 365)
 
 ytd_hours = current_ytd_df["duration_hr"].sum()
 prev_year_hours = prev_year_df["duration_hr"].sum()
-projected_hours = ytd_hours / year_progress if year_progress > 0 else 0
+
+# Pattern-based projection: assume the remainder of this year mirrors what last
+# year did over the equivalent remaining days. Far more honest than linear
+# extrapolation when the previous year had a strongly seasonal load.
+prev_year_at_same_day = prev_year_df[
+    prev_year_df['start_date_local'].dt.dayofyear <= day_of_year
+]['duration_hr'].sum()
+prev_year_remaining = max(prev_year_hours - prev_year_at_same_day, 0)
+projected_hours = ytd_hours + prev_year_remaining
 
 on_track = projected_hours > prev_year_hours
 trend_emoji = "🔼" if on_track else "🔽"
@@ -686,20 +739,13 @@ def build_fitness_fig(start_date):
     ), secondary_y=True)
     fig.add_trace(go.Scatter(
         x=ds['date'], y=ds['fatigue'], name="Fatigue (ATL · 7d)",
-        line=dict(color=SERIES["fatigue"], width=1.6, dash="dot"),
+        line=dict(color=SERIES["fatigue"], width=1.8, dash="dot"),
         hovertemplate="Fatigue: %{y:.0f}<extra></extra>",
     ), secondary_y=True)
-    fig.add_trace(go.Scatter(
-        x=ds['date'], y=ds['form'], name="Form (TSB)",
-        line=dict(color=SERIES["form"], width=1.6),
-        hovertemplate="Form: %{y:+.0f}<extra></extra>",
-    ), secondary_y=True)
-    fig.add_hline(y=0, line=dict(color=SERIES["form_zero"], width=1, dash="dash"),
-                  secondary_y=True)
 
     fig.update_layout(
         template=dark_template,
-        title_text="💪 Fitness · Fatigue · Form",
+        title_text="💪 Fitness · Fatigue · Monthly Volume",
         barmode='stack',
         hovermode="x unified",
         showlegend=True,
@@ -794,7 +840,7 @@ def build_heatmap_fig(start_date):
     fig.update_yaxes(title_text=None, autorange="reversed", showgrid=False)
     return fig
 
-layout_heatmap = dbc.Row([dbc.Col(dcc.Graph(id='heatmap-graph', figure=build_heatmap_fig(None)), md=12)])
+# layout_heatmap defined below as part of layout_heatmap_cumulative
 
 # 5. Cumulative Stats — global-filter aware (cumsum resets at filter window start)
 
@@ -851,9 +897,10 @@ def build_cumulative_time_fig(start_date):
     fig.update_yaxes(title_text=None)
     return fig
 
-layout_cumulative = dbc.Row([
-    dbc.Col(dcc.Graph(id='cumulative-time-graph',
-                      figure=build_cumulative_time_fig(None)), md=12),
+# Heatmap + cumulative time side-by-side
+layout_heatmap_cumulative = dbc.Row([
+    dbc.Col(dcc.Graph(id='heatmap-graph', figure=build_heatmap_fig(None)), md=6),
+    dbc.Col(dcc.Graph(id='cumulative-time-graph', figure=build_cumulative_time_fig(None)), md=6),
 ])
 
 # 6. Run Performance — pace axis formatted as MM:SS, year as discrete colors
@@ -1142,6 +1189,38 @@ def _pace_sparkline(progression, accent_color):
     )
     return fig
 
+def _distribution_spark(values, pr_value, accent_color, unit="km", value_fmt=".1f"):
+    """Small histogram of all values for context, with a vertical marker at the PR.
+    Visualises how rare/extreme the PR is relative to the rest of the distribution."""
+    if values is None or pr_value is None:
+        return None
+    values = pd.Series(values).dropna()
+    if len(values) < 3:
+        return None
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=values,
+        nbinsx=min(18, max(5, len(values) // 4)),
+        marker=dict(color="#374151", line=dict(width=0)),
+        opacity=0.9,
+        showlegend=False,
+        hovertemplate=f"%{{x:{value_fmt}}} {unit}: %{{y}} sessions<extra></extra>",
+    ))
+    fig.add_vline(x=pr_value, line=dict(color=accent_color, width=2))
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=4, b=4),
+        height=44,
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        font=chart_font,
+        xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, fixedrange=True),
+        yaxis=dict(showgrid=False, showticklabels=False, zeroline=False, fixedrange=True),
+        showlegend=False,
+        bargap=0.06,
+        hoverlabel=dict(bgcolor="#1F2937", bordercolor=dark_grid_color,
+                        font=dict(family=chart_font_family, color=dark_text_color, size=11)),
+    )
+    return fig
+
 def pr_card(title, value, subtitle="", spark=None):
     body = [
         html.Div(title, className="text-uppercase",
@@ -1200,19 +1279,64 @@ def _fmt_hardest(row):
     sub = f"{row['type']} · " + " · ".join(sub_bits) + f" on {row['date']}"
     return (main, sub)
 
+# Distribution sparks for the extreme-value PR cards: show how rare/extreme the
+# record is relative to the full set of sessions of that type.
+_run_distances_km = df.loc[(df['type'] == 'Run') & (df['distance'] > 0), 'distance'] / 1000
+_hike_distances_km = df.loc[(df['type'] == 'Hike') & (df['distance'] > 0), 'distance'] / 1000
+
+_hike_for_steepness = df[(df['type'] == 'Hike') & (df['distance'] > 1000)
+                         & (df['total_elevation_gain'] > 0)].copy()
+_hike_for_steepness['m_per_km'] = (
+    _hike_for_steepness['total_elevation_gain'] / (_hike_for_steepness['distance'] / 1000)
+)
+
+dist_spark_run = _distribution_spark(
+    _run_distances_km,
+    pr_longest_run['distance'] / 1000 if pr_longest_run is not None else None,
+    color_map.get('Run'),
+)
+dist_spark_hike = _distribution_spark(
+    _hike_distances_km,
+    pr_longest_hike['distance'] / 1000 if pr_longest_hike is not None else None,
+    color_map.get('Hike'),
+)
+dist_spark_steep = _distribution_spark(
+    _hike_for_steepness['m_per_km'],
+    pr_steepest_hike['m_per_km'] if pr_steepest_hike is not None else None,
+    color_map.get('Hike'),
+    unit="m/km", value_fmt=".0f",
+)
+
+# Hardest session: TRIMP distribution across all activities — the PR will sit
+# in the long right tail showing how exceptional it is.
+dist_spark_hardest = _distribution_spark(
+    df['training_load'],
+    pr_hardest['training_load'] if pr_hardest is not None else None,
+    SERIES["overreach"],
+    unit="TRIMP", value_fmt=".0f",
+)
+
+# Biggest week: weekly hours distribution with PR marked.
+dist_spark_week = _distribution_spark(
+    weekly_hours,
+    busiest_week_total,
+    SERIES["fresh"],
+    unit="h", value_fmt=".1f",
+)
+
 prs_with_sparks = [
-    ("🏃 Longest Run", *_fmt_longest(pr_longest_run), None),
+    ("🏃 Longest Run", *_fmt_longest(pr_longest_run), dist_spark_run),
     ("🚴 Longest Ride", *_fmt_longest(pr_longest_ride), None),
-    ("🥾 Longest Hike", *_fmt_longest(pr_longest_hike, include_vert=True), None),
+    ("🥾 Longest Hike", *_fmt_longest(pr_longest_hike, include_vert=True), dist_spark_hike),
     ("⚡ Fastest 5K", *_fmt_pace(pr_fastest_5k),
      _pace_sparkline(pace_progression_5k, SERIES["rolling_7"])),
     ("⚡ Fastest 10K", *_fmt_pace(pr_fastest_10k),
      _pace_sparkline(pace_progression_10k, SERIES["rolling_28"])),
     ("⚡ Fastest Long Run", *_fmt_pace(pr_fastest_long),
      _pace_sparkline(pace_progression_long, SERIES["rolling_365"])),
-    ("⛰️ Steepest Hike", *_fmt_steepest(pr_steepest_hike), None),
-    ("📈 Biggest Week", f"{busiest_week_total}h", f"{busiest_week_start.date()}", None),
-    ("🔥 Hardest Session", *_fmt_hardest(pr_hardest), None),
+    ("⛰️ Steepest Hike", *_fmt_steepest(pr_steepest_hike), dist_spark_steep),
+    ("📈 Biggest Week", f"{busiest_week_total}h", f"{busiest_week_start.date()}", dist_spark_week),
+    ("🔥 Hardest Session", *_fmt_hardest(pr_hardest), dist_spark_hardest),
 ]
 
 layout_prs = html.Div([
@@ -1312,6 +1436,22 @@ cum_last_year = _yoy_cumulative(prev_year)
 day_now = today.timetuple().tm_yday
 
 yoy_fig = go.Figure()
+
+# Older history first so it sits behind the prominent lines
+older_years = sorted([int(y) for y in df['year'].unique() if y < prev_year])
+for year in older_years:
+    cum = _yoy_cumulative(year)
+    if cum is None:
+        continue
+    yoy_fig.add_trace(go.Scatter(
+        x=list(range(1, 367)), y=cum.round(2).values,
+        name=str(year),
+        line=dict(color="#4B5563", width=1.2, dash="dot"),
+        opacity=0.55,
+        hovertemplate=f"<b>{year}</b>: %{{y:.1f}}h<extra></extra>"
+    ))
+
+# Previous year — secondary, dotted
 if cum_last_year is not None:
     yoy_fig.add_trace(go.Scatter(
         x=list(range(1, 367)), y=cum_last_year.round(2).values,
@@ -1319,6 +1459,8 @@ if cum_last_year is not None:
         line=dict(color=muted_text_color, width=2, dash="dot"),
         hovertemplate=f"<b>{prev_year}</b>: %{{y:.1f}}h<extra></extra>"
     ))
+
+# Current year — primary, solid, capped at today
 if cum_this_year is not None:
     _y = cum_this_year.round(2).copy()
     _y.iloc[day_now:] = np.nan  # don't extrapolate beyond today
@@ -1364,35 +1506,55 @@ layout_yoy_trajectory = dbc.Row([dbc.Col(dcc.Graph(figure=yoy_fig), md=12)])
 # MAP — where you train
 #######################
 
-map_df = df[df['lat'].notna() & df['lng'].notna()].copy()
+map_df = df[df['lat_final'].notna() & df['lng_final'].notna()].copy()
 if not map_df.empty:
     map_df['date_str'] = map_df['date'].astype(str)
     map_df['hours_str'] = map_df['duration_hr'].apply(lambda x: f"{x:.2f}")
-    map_fig = px.scatter_map(
-        map_df, lat='lat', lon='lng',
-        color='type', color_discrete_map=color_map,
-        size='duration_hr', size_max=14,
-        opacity=0.7,
-        hover_name='name',
-        hover_data={'date_str': True, 'hours_str': True, 'type': False,
-                    'lat': False, 'lng': False, 'duration_hr': False},
-        labels={'date_str': 'Date', 'hours_str': 'Hours'},
-        zoom=1.2,
-        map_style='carto-darkmatter',
-        title='🌍 Where Do You Train?',
-    ) if hasattr(px, 'scatter_map') else px.scatter_mapbox(
-        map_df, lat='lat', lon='lng',
-        color='type', color_discrete_map=color_map,
-        size='duration_hr', size_max=14,
-        opacity=0.7,
-        hover_name='name',
-        hover_data={'date_str': True, 'hours_str': True, 'type': False,
-                    'lat': False, 'lng': False, 'duration_hr': False},
-        labels={'date_str': 'Date', 'hours_str': 'Hours'},
-        zoom=1.2,
-        mapbox_style='carto-darkmatter',
-        title='🌍 Where Do You Train?',
+
+    def _loc_label(row):
+        if not row['is_approx_loc']:
+            return "GPS"
+        for k in ('location_city', 'location_state', 'location_country'):
+            v = row.get(k)
+            if pd.notna(v):
+                return f"~ {v}"
+        return "approximate"
+    map_df['loc_label'] = map_df.apply(_loc_label, axis=1)
+
+    _gps_count = int((~map_df['is_approx_loc']).sum())
+    _approx_count = int(map_df['is_approx_loc'].sum())
+    _missing = len(df) - len(map_df)
+    if _approx_count:
+        _coverage_text = (
+            f"{_gps_count} GPS-tagged · {_approx_count} city-approx · {_missing} unmapped"
+        )
+    else:
+        _coverage_text = (
+            f"{_gps_count} of {len(df)} activities · indoor sessions don't record GPS"
+        )
+    _gps_coverage = (
+        f"<span style='font-size: 0.65em; color:{muted_text_color}; font-weight:400'>"
+        f"{_coverage_text}"
+        "</span>"
     )
+    _map_title = f"🌍 Where Do You Train?<br>{_gps_coverage}"
+    _map_kwargs = dict(
+        data_frame=map_df, lat='lat_final', lon='lng_final',
+        color='type', color_discrete_map=color_map,
+        size='duration_hr', size_max=14,
+        opacity=0.7,
+        hover_name='name',
+        hover_data={'date_str': True, 'hours_str': True, 'loc_label': True,
+                    'type': False, 'lat_final': False, 'lng_final': False,
+                    'duration_hr': False},
+        labels={'date_str': 'Date', 'hours_str': 'Hours', 'loc_label': 'Location'},
+        zoom=1.2,
+        title=_map_title,
+    )
+    if hasattr(px, 'scatter_map'):
+        map_fig = px.scatter_map(map_style='carto-darkmatter', **_map_kwargs)
+    else:
+        map_fig = px.scatter_mapbox(mapbox_style='carto-darkmatter', **_map_kwargs)
     map_fig.update_layout(
         template=dark_template,
         height=460,
@@ -1423,9 +1585,7 @@ app.layout = dbc.Container([
     html.Hr(),
     layout_rolling,
     html.Hr(),
-    layout_heatmap,
-    html.Hr(),
-    layout_cumulative,
+    layout_heatmap_cumulative,
     html.Hr(),
     layout_scatter,
     html.Hr(),

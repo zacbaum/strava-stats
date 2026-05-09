@@ -20,12 +20,19 @@ def main():
     auth_url = "https://www.strava.com/oauth/token"
     activities_url = "https://www.strava.com/api/v3/athlete/activities"
 
+    # FORCE_REFRESH=true bypasses the existing-id skip, re-fetching every
+    # activity from scratch — useful when new columns are added below.
+    force_refresh = os.getenv("FORCE_REFRESH", "").lower() in ("1", "true", "yes")
+
     # Columns to extract
     columns = [
         'id', 'type', 'name', 'distance', 'moving_time', 'elapsed_time',
         'total_elevation_gain', 'start_date', 'start_date_local', 'start_latlng', 'kilojoules',
         'average_heartrate', 'max_heartrate', 'elev_high', 'elev_low',
-        'average_speed', 'max_speed'
+        'average_speed', 'max_speed',
+        # Location text fields — populated by Strava for activities started on
+        # a phone with geolocation, including most indoor sessions.
+        'location_city', 'location_state', 'location_country',
     ]
 
     # Step 1: Get access token using refresh token
@@ -47,13 +54,17 @@ def main():
 
     # Step 2: Load existing activities if available
     existing_ids = set()
-    try:
-        existing_df = pd.read_csv('activities.csv', dtype={'id': str})
-        existing_ids = set(existing_df['id'].astype(str))
-        print(f"📁 Loaded {len(existing_df)} existing activities.")
-    except FileNotFoundError:
+    if force_refresh:
         existing_df = pd.DataFrame(columns=columns)
-        print("📁 No existing CSV found. Starting from scratch.")
+        print("🔁 FORCE_REFRESH set — ignoring existing CSV, re-fetching all activities.")
+    else:
+        try:
+            existing_df = pd.read_csv('activities.csv', dtype={'id': str})
+            existing_ids = set(existing_df['id'].astype(str))
+            print(f"📁 Loaded {len(existing_df)} existing activities.")
+        except FileNotFoundError:
+            existing_df = pd.DataFrame(columns=columns)
+            print("📁 No existing CSV found. Starting from scratch.")
 
     # Step 3: Fetch new activities
     page = 1
