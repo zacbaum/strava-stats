@@ -29,6 +29,10 @@ df.loc[(df['type'] == 'Run') & (df['total_elevation_gain'] == 0), 'start_date_lo
 
 df = df[df["start_date_local"] >= "2023-01-01"]
 
+# Walks weren't tracked consistently before 2024 — exclude them so they don't
+# inflate active-day / cumulative metrics with sparse early-period data.
+df = df[~((df['type'] == 'Walk') & (df['start_date_local'] < '2024-01-01'))]
+
 df['type'] = df.apply(
     lambda row: 'Racquet Sports' if row['type'] == 'Workout' and 'pickleball' in str(row.get('name', '')).lower()
     else ('Racquet Sports' if row['type'] == 'Workout' and 'squash' in str(row.get('name', '')).lower()
@@ -77,14 +81,18 @@ dark_text_color = "#FFFFFF"
 dark_grid_color = "#333333"
 muted_text_color = "#888888"
 
+# Single font stack used for HTML (via assets/style.css) and Plotly figures
+chart_font_family = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+chart_font = dict(color=dark_text_color, family=chart_font_family)
+
 dark_template = dict(
     layout=dict(
         paper_bgcolor=dark_paper_color,
         plot_bgcolor=dark_bg_color,
-        font=dict(color=dark_text_color),
+        font=chart_font,
         xaxis=dict(gridcolor=dark_grid_color, zerolinecolor=dark_grid_color),
         yaxis=dict(gridcolor=dark_grid_color, zerolinecolor=dark_grid_color),
-        legend=dict(font=dict(color=dark_text_color))
+        legend=dict(font=chart_font)
     )
 )
 
@@ -338,6 +346,12 @@ comparative_stats_df = pd.DataFrame([
 def _format_pace(pace):
     return f"{int(pace)}:{int(round((pace % 1) * 60)):02d}"
 
+def _format_duration(seconds):
+    s = int(round(seconds))
+    h, rem = divmod(s, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
 def _longest_by_type(t):
     sub = df[(df['type'] == t) & df['distance'].notna() & (df['distance'] > 0)]
     if sub.empty:
@@ -460,7 +474,100 @@ layout_pie = dbc.Row([
     ], md=4),
 ])
 
-# 2. Fitness Chart (CTL / ATL / TSB + monthly bars)
+# 2. Fitness / Fatigue / Form — explainer + 30-day focused form view + full chart
+
+fitness_explainer = dcc.Markdown(
+    """
+**Fitness (CTL)** — 42-day rolling training load. Your long-term base.
+**Fatigue (ATL)** — 7-day rolling load. How loaded your body is right now.
+**Form (TSB) = Fitness − Fatigue.** Positive = fresh, negative = tired.
+
+Bands: above **+5** fresh / peaked &nbsp;·&nbsp; **+5 to −10** optimal training zone &nbsp;·&nbsp;
+**−10 to −30** productive (building, accept the tired) &nbsp;·&nbsp; below **−30** overreaching.
+    """,
+    className="px-4 py-2 mb-2",
+    style={"color": dark_text_color, "fontSize": "0.92rem", "lineHeight": "1.6"}
+)
+
+# Last-30-day Form chart with zone shading
+form_recent_start = today - timedelta(days=30)
+form_recent = daily_scores[daily_scores['date'] >= form_recent_start].copy()
+
+zone_specs = [
+    (5, 200, "Fresh", "#4ade80"),
+    (-10, 5, "Optimal", "#60a5fa"),
+    (-30, -10, "Productive", "#facc15"),
+    (-200, -30, "Overreaching", "#f87171"),
+]
+
+form_recent_fig = go.Figure()
+
+for y0, y1, _, hex_color in zone_specs:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    form_recent_fig.add_hrect(
+        y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.13)",
+        line_width=0, layer="below"
+    )
+
+form_recent_fig.add_trace(go.Scatter(
+    x=form_recent['date'], y=form_recent['form'],
+    mode="lines",
+    line=dict(color="#ffffff", width=3),
+    hovertemplate="%{x|%b %d}<br>Form: %{y:+.1f}<extra></extra>",
+    name="Form (TSB)",
+    showlegend=False
+))
+
+# Highlight today's value
+form_recent_fig.add_trace(go.Scatter(
+    x=[form_recent['date'].iloc[-1]],
+    y=[form_recent['form'].iloc[-1]],
+    mode="markers",
+    marker=dict(color=form_color, size=14, line=dict(color="white", width=2)),
+    hovertemplate=f"Today: {current_form:+.1f}<br>{form_label}<extra></extra>",
+    showlegend=False
+))
+
+form_recent_fig.add_hline(y=0, line=dict(color="#666", width=1, dash="dash"))
+
+# Zone labels on the right edge
+form_y_min = min(form_recent['form'].min(), -35) - 5
+form_y_max = max(form_recent['form'].max(), 12) + 5
+zone_label_positions = [
+    (max(form_y_max - 4, 8), "Fresh", "#4ade80"),
+    (-2.5, "Optimal", "#60a5fa"),
+    (-20, "Productive", "#facc15"),
+    (min(form_y_min + 4, -36), "Overreaching", "#f87171"),
+]
+for y, label, color in zone_label_positions:
+    if form_y_min <= y <= form_y_max:
+        form_recent_fig.add_annotation(
+            xref="paper", x=1.0, y=y,
+            xanchor="left", yanchor="middle",
+            text=label, showarrow=False,
+            font=dict(color=color, size=10, family=chart_font_family),
+            xshift=8
+        )
+
+form_recent_fig.update_layout(
+    title_text=f"🎯 Form — Last 30 Days  &nbsp;<span style='color:{form_color}'>{current_form:+.0f} · {form_label}</span>",
+    paper_bgcolor=dark_paper_color,
+    plot_bgcolor=dark_bg_color,
+    font=chart_font,
+    xaxis=dict(showgrid=False, title_text=None),
+    yaxis=dict(
+        title_text="Form (TSB)",
+        gridcolor=dark_grid_color, zerolinecolor="#666",
+        range=[form_y_min, form_y_max]
+    ),
+    margin=dict(l=10, r=90, t=60, b=10),
+    height=320
+)
+
+layout_form_recent = dbc.Row([dbc.Col(dcc.Graph(figure=form_recent_fig), md=12)])
+
+# 2b. Full Fitness Chart (CTL / ATL / TSB + monthly bars)
 fitness_fig = make_subplots(specs=[[{"secondary_y": True}]])
 
 # Stacked monthly bars (no legend — colors echo the pies)
@@ -516,10 +623,10 @@ fitness_fig.update_layout(
     hovermode="x unified",
     showlegend=True,
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(color=dark_text_color)),
+                font=chart_font),
     paper_bgcolor=dark_paper_color,
     plot_bgcolor=dark_bg_color,
-    font=dict(color=dark_text_color),
+    font=chart_font,
     xaxis=dict(showgrid=False, zerolinecolor=dark_bg_color, title_text=None),
     margin=dict(l=10, r=10, t=60, b=10)
 )
@@ -556,9 +663,9 @@ rolling_fig.update_layout(
     hovermode="x unified",
     paper_bgcolor=dark_paper_color,
     plot_bgcolor=dark_bg_color,
-    font=dict(color=dark_text_color),
+    font=chart_font,
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(color=dark_text_color)),
+                font=chart_font),
     xaxis=dict(showgrid=False, title_text=None),
     yaxis=dict(showgrid=True, gridcolor=dark_grid_color, title_text="Hours / week",
                rangemode="tozero"),
@@ -579,7 +686,7 @@ heatmap_fig.update_layout(
     title_text="🔥 When Do You Train? (Day × Hour) 🔥",
     paper_bgcolor=dark_paper_color,
     plot_bgcolor=dark_bg_color,
-    font=dict(color=dark_text_color),
+    font=chart_font,
     xaxis=dict(showgrid=False, title_text=None, tickfont=dict(size=10)),
     yaxis=dict(showgrid=False, title_text=None, autorange="reversed"),  # Mon at top
     margin=dict(l=10, r=10, t=60, b=10),
@@ -899,7 +1006,7 @@ def _fmt_pace(row):
     if row is None:
         return ("—", "")
     return (f"{_format_pace(row['pace_min_per_km'])} /km",
-            f"{row['distance']/1000:.1f} km on {row['date']}")
+            f"{row['distance']/1000:.1f} km in {_format_duration(row['moving_time'])} on {row['date']}")
 
 prs = [
     ("🏃 Longest Run", *_fmt_longest(pr_longest_run)),
@@ -933,6 +1040,8 @@ app.layout = dbc.Container([
     layout_bonus,
     layout_yoy,
     html.Hr(),
+    fitness_explainer,
+    layout_form_recent,
     layout_fitness,
     html.Hr(),
     layout_rolling,
