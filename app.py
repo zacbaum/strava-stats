@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import dash_table, dcc, html
+from dash import Input, Output, dash_table, dcc, html
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -474,6 +474,38 @@ layout_pie = dbc.Row([
     ], md=4),
 ])
 
+# Global range filter — controls fitness, rolling, heatmap, and cumulative charts
+
+def _filter_start_from_value(value):
+    if not value or value == "all":
+        return None
+    try:
+        return today - timedelta(days=int(value))
+    except (ValueError, TypeError):
+        return None
+
+filter_dropdown = html.Div([
+    html.Span("Filter range:", className="me-3 fw-semibold",
+              style={"color": dark_text_color}),
+    dbc.RadioItems(
+        id='global-filter',
+        options=[
+            {"label": "Past Week", "value": "7"},
+            {"label": "Past Month", "value": "30"},
+            {"label": "Past 3 Months", "value": "90"},
+            {"label": "Past 6 Months", "value": "180"},
+            {"label": "Past Year", "value": "365"},
+            {"label": "All Time", "value": "all"},
+        ],
+        value="all",
+        inline=True,
+        className="d-inline-block",
+        labelClassName="me-3",
+    )
+], className="d-flex align-items-center justify-content-center my-3 px-3 py-2",
+   style={"backgroundColor": dark_paper_color, "border": f"1px solid {dark_grid_color}",
+          "borderRadius": "6px"})
+
 # 2. Fitness / Fatigue / Form — explainer + 30-day focused form view + full chart
 
 fitness_explainer = dcc.Markdown(
@@ -567,169 +599,237 @@ form_recent_fig.update_layout(
 
 layout_form_recent = dbc.Row([dbc.Col(dcc.Graph(figure=form_recent_fig), md=12)])
 
-# 2b. Full Fitness Chart (CTL / ATL / TSB + monthly bars)
-fitness_fig = make_subplots(specs=[[{"secondary_y": True}]])
+# 2b. Full Fitness Chart (CTL / ATL / TSB + monthly bars) — global-filter aware
 
-# Stacked monthly bars (no legend — colors echo the pies)
-for activity_type in df['type'].unique():
-    activity_data = monthly_activity[monthly_activity['type'] == activity_type]
-    fitness_fig.add_trace(
-        go.Bar(
-            x=activity_data['month'],
-            y=activity_data['duration_hr'],
-            name=activity_type,
-            marker_color=color_map.get(activity_type, '#333333'),
-            hovertemplate=f"{activity_type}: %{{y:.1f}}h<br>%{{x|%b %Y}}<extra></extra>",
-            showlegend=False
-        ),
-        secondary_y=False
-    )
+def build_fitness_fig(start_date):
+    if start_date:
+        ma = monthly_activity[monthly_activity['month'] >= pd.Timestamp(start_date)]
+        ds = daily_scores[daily_scores['date'] >= start_date]
+    else:
+        ma = monthly_activity
+        ds = daily_scores
 
-# Fitness (CTL) — primary line
-fitness_fig.add_trace(
-    go.Scatter(
-        x=daily_scores['date'], y=daily_scores['fitness'],
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Stacked monthly bars
+    for activity_type in df['type'].unique():
+        activity_data = ma[ma['type'] == activity_type]
+        fig.add_trace(
+            go.Bar(
+                x=activity_data['month'],
+                y=activity_data['duration_hr'],
+                name=activity_type,
+                marker_color=color_map.get(activity_type, '#333333'),
+                hovertemplate=f"{activity_type}: %{{y:.1f}}h<br>%{{x|%b %Y}}<extra></extra>",
+                showlegend=False
+            ),
+            secondary_y=False
+        )
+
+    fig.add_trace(go.Scatter(
+        x=ds['date'], y=ds['fitness'],
         name="Fitness (CTL, 42d)",
         line=dict(color="#ffffff", width=2.5),
         hovertemplate="Fitness: %{y:.0f}<extra></extra>"
-    ),
-    secondary_y=True
-)
-# Fatigue (ATL)
-fitness_fig.add_trace(
-    go.Scatter(
-        x=daily_scores['date'], y=daily_scores['fatigue'],
+    ), secondary_y=True)
+    fig.add_trace(go.Scatter(
+        x=ds['date'], y=ds['fatigue'],
         name="Fatigue (ATL, 7d)",
         line=dict(color="#ff9f40", width=1.5, dash="dot"),
         hovertemplate="Fatigue: %{y:.0f}<extra></extra>"
-    ),
-    secondary_y=True
-)
-# Form (TSB) — can go negative; zero line below highlights crossings
-fitness_fig.add_trace(
-    go.Scatter(
-        x=daily_scores['date'], y=daily_scores['form'],
+    ), secondary_y=True)
+    fig.add_trace(go.Scatter(
+        x=ds['date'], y=ds['form'],
         name="Form (TSB)",
         line=dict(color="#4ade80", width=1.5),
         hovertemplate="Form: %{y:+.0f}<extra></extra>"
-    ),
-    secondary_y=True
-)
-fitness_fig.add_hline(y=0, line=dict(color="#666666", width=1, dash="dash"), secondary_y=True)
+    ), secondary_y=True)
+    fig.add_hline(y=0, line=dict(color="#666666", width=1, dash="dash"), secondary_y=True)
 
-fitness_fig.update_layout(
-    title_text="💪 Fitness, Fatigue & Form 📈",
-    barmode='stack',
-    hovermode="x unified",
-    showlegend=True,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=chart_font),
-    paper_bgcolor=dark_paper_color,
-    plot_bgcolor=dark_bg_color,
-    font=chart_font,
-    xaxis=dict(showgrid=False, zerolinecolor=dark_bg_color, title_text=None),
-    margin=dict(l=10, r=10, t=60, b=10)
-)
-fitness_fig.update_yaxes(
-    title_text="Hours", secondary_y=False, showgrid=True,
-    gridwidth=1, gridcolor=dark_grid_color, minor_showgrid=False, rangemode="tozero"
-)
-fitness_fig.update_yaxes(
-    title_text="Score", secondary_y=True, title_font=dict(color="#ffffff"),
-    showgrid=False, minor_showgrid=False
-)
+    fig.update_layout(
+        title_text="💪 Fitness, Fatigue & Form 📈",
+        barmode='stack',
+        hovermode="x unified",
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    font=chart_font),
+        paper_bgcolor=dark_paper_color,
+        plot_bgcolor=dark_bg_color,
+        font=chart_font,
+        xaxis=dict(showgrid=False, zerolinecolor=dark_bg_color, title_text=None),
+        margin=dict(l=10, r=10, t=60, b=10)
+    )
+    fig.update_yaxes(
+        title_text="Hours", secondary_y=False, showgrid=True,
+        gridwidth=1, gridcolor=dark_grid_color, minor_showgrid=False, rangemode="tozero"
+    )
+    fig.update_yaxes(
+        title_text="Score", secondary_y=True, title_font=dict(color="#ffffff"),
+        showgrid=False, minor_showgrid=False
+    )
+    return fig
 
-layout_fitness = dbc.Row([dbc.Col(dcc.Graph(figure=fitness_fig), md=12)])
+layout_fitness = dbc.Row([dbc.Col(dcc.Graph(id='fitness-graph', figure=build_fitness_fig(None)), md=12)])
 
-# 3. Rolling Volume Chart
-rolling_fig = go.Figure()
-rolling_fig.add_trace(go.Scatter(
-    x=list(daily_hours_series.index), y=rolling_7d.values,
-    name="Week (7d)", line=dict(color="#36a2eb", width=2),
-    hovertemplate="7d: %{y:.1f} h/wk<extra></extra>"
-))
-rolling_fig.add_trace(go.Scatter(
-    x=list(daily_hours_series.index), y=rolling_28d.values,
-    name="Month (28d avg)", line=dict(color="#ff9f40", width=2),
-    hovertemplate="28d avg: %{y:.1f} h/wk<extra></extra>"
-))
-rolling_fig.add_trace(go.Scatter(
-    x=list(daily_hours_series.index), y=rolling_365d.values,
-    name="Year (365d avg)", line=dict(color="#b967ff", width=2),
-    hovertemplate="365d avg: %{y:.1f} h/wk<extra></extra>"
-))
-rolling_fig.update_layout(
-    title_text="⏳ Rolling Training Volume (hours per week) ⏳",
-    hovermode="x unified",
-    paper_bgcolor=dark_paper_color,
-    plot_bgcolor=dark_bg_color,
-    font=chart_font,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=chart_font),
-    xaxis=dict(showgrid=False, title_text=None),
-    yaxis=dict(showgrid=True, gridcolor=dark_grid_color, title_text="Hours / week",
-               rangemode="tozero"),
-    margin=dict(l=10, r=10, t=60, b=10)
-)
-layout_rolling = dbc.Row([dbc.Col(dcc.Graph(figure=rolling_fig), md=12)])
+# 3. Rolling Volume Chart — global-filter aware
 
-# 4. Day-of-Week × Hour Heatmap (replaces weekday bar + hourly bar)
-heatmap_fig = go.Figure(data=go.Heatmap(
-    z=heatmap_pivot.values,
-    x=[f"{h:02d}:00" for h in range(24)],
-    y=weekday_order,
-    colorscale="Plasma",
-    hovertemplate="%{y} %{x}<br>%{z:.1f} hours<extra></extra>",
-    colorbar=dict(title="Hours")
-))
-heatmap_fig.update_layout(
-    title_text="🔥 When Do You Train? (Day × Hour) 🔥",
-    paper_bgcolor=dark_paper_color,
-    plot_bgcolor=dark_bg_color,
-    font=chart_font,
-    xaxis=dict(showgrid=False, title_text=None, tickfont=dict(size=10)),
-    yaxis=dict(showgrid=False, title_text=None, autorange="reversed"),  # Mon at top
-    margin=dict(l=10, r=10, t=60, b=10),
-    height=360
-)
-layout_heatmap = dbc.Row([dbc.Col(dcc.Graph(figure=heatmap_fig), md=12)])
+def build_rolling_fig(start_date):
+    idx = pd.Index(daily_hours_series.index)
+    if start_date:
+        mask = idx >= start_date
+        x = idx[mask]
+        y7 = rolling_7d.values[mask]
+        y28 = rolling_28d.values[mask]
+        y365 = rolling_365d.values[mask]
+    else:
+        x = idx
+        y7 = rolling_7d.values
+        y28 = rolling_28d.values
+        y365 = rolling_365d.values
 
-# 5. Cumulative Stats
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=list(x), y=y7,
+        name="Week (7d)", line=dict(color="#36a2eb", width=2),
+        hovertemplate="7d: %{y:.1f} h/wk<extra></extra>"
+    ))
+    fig.add_trace(go.Scatter(
+        x=list(x), y=y28,
+        name="Month (28d avg)", line=dict(color="#ff9f40", width=2),
+        hovertemplate="28d avg: %{y:.1f} h/wk<extra></extra>"
+    ))
+    fig.add_trace(go.Scatter(
+        x=list(x), y=y365,
+        name="Year (365d avg)", line=dict(color="#b967ff", width=2),
+        hovertemplate="365d avg: %{y:.1f} h/wk<extra></extra>"
+    ))
+    fig.update_layout(
+        title_text="⏳ Rolling Training Volume (hours per week) ⏳",
+        hovermode="x unified",
+        paper_bgcolor=dark_paper_color,
+        plot_bgcolor=dark_bg_color,
+        font=chart_font,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    font=chart_font),
+        xaxis=dict(showgrid=False, title_text=None),
+        yaxis=dict(showgrid=True, gridcolor=dark_grid_color, title_text="Hours / week",
+                   rangemode="tozero"),
+        margin=dict(l=10, r=10, t=60, b=10)
+    )
+    return fig
+
+layout_rolling = dbc.Row([dbc.Col(dcc.Graph(id='rolling-graph', figure=build_rolling_fig(None)), md=12)])
+
+# 4. Day-of-Week × Hour Heatmap — global-filter aware
+
+def build_heatmap_fig(start_date):
+    df_f = df[df['date'] >= start_date] if start_date else df
+    pivot = (
+        df_f.groupby(['weekday_idx', 'hour_of_day'])['duration_hr'].sum()
+        .unstack(fill_value=0)
+        .reindex(index=range(7), columns=range(24), fill_value=0)
+    )
+    fig = go.Figure(data=go.Heatmap(
+        z=pivot.values,
+        x=[f"{h:02d}:00" for h in range(24)],
+        y=weekday_order,
+        colorscale="Plasma",
+        hovertemplate="%{y} %{x}<br>%{z:.1f} hours<extra></extra>",
+        colorbar=dict(title="Hours")
+    ))
+    fig.update_layout(
+        title_text="🔥 When Do You Train? (Day × Hour) 🔥",
+        paper_bgcolor=dark_paper_color,
+        plot_bgcolor=dark_bg_color,
+        font=chart_font,
+        xaxis=dict(showgrid=False, title_text=None, tickfont=dict(size=10)),
+        yaxis=dict(showgrid=False, title_text=None, autorange="reversed"),
+        margin=dict(l=10, r=10, t=60, b=10),
+        height=360
+    )
+    return fig
+
+layout_heatmap = dbc.Row([dbc.Col(dcc.Graph(id='heatmap-graph', figure=build_heatmap_fig(None)), md=12)])
+
+# 5. Cumulative Stats — global-filter aware (cumsum resets at filter window start)
+
+def _empty_fig(msg):
+    fig = go.Figure()
+    fig.update_layout(
+        paper_bgcolor=dark_paper_color, plot_bgcolor=dark_bg_color, font=chart_font,
+        annotations=[dict(text=msg, x=0.5, y=0.5, xref="paper", yref="paper",
+                          showarrow=False, font=dict(color=muted_text_color, size=14,
+                                                     family=chart_font_family))],
+        xaxis=dict(visible=False), yaxis=dict(visible=False),
+        margin=dict(l=10, r=10, t=40, b=10), height=320
+    )
+    return fig
+
+def _build_cumulative_pivot(start_date, value_col):
+    """Cumulative pivot of `value_col` per type, starting cumsum at the filter window."""
+    src = df.sort_values("start_date_local").copy()
+    src["activity_count"] = 1
+    if start_date:
+        src = src[src['date'] >= start_date]
+    if src.empty:
+        return None
+    start_d = start_date if start_date else df['date'].min()
+    end_d = df['date'].max()
+    dates_idx = pd.date_range(start=start_d, end=end_d, freq='D').date
+    date_df_local = pd.DataFrame({"date": dates_idx})
+
+    grouped = src.groupby(["date", "type"])[value_col].sum().reset_index()
+    pivot = grouped.pivot(index='date', columns='type', values=value_col).fillna(0)
+    pivot = pd.merge(date_df_local, pivot.reset_index(), on='date', how='left').fillna(0)
+    pivot = pivot.sort_values('date')
+    for col in pivot.columns:
+        if col != 'date':
+            pivot[col] = pivot[col].cumsum()
+    return pivot
+
+def build_cumulative_count_fig(start_date):
+    pivot = _build_cumulative_pivot(start_date, "activity_count")
+    if pivot is None:
+        return _empty_fig("No activities in range")
+    return px.area(
+        pivot, x="date", y=pivot.columns[1:],
+        title="🏆 What Activities Are You Doing Most? 🏆",
+        color_discrete_map=color_map,
+        labels={"value": "Count", "date": "", "variable": "Activity Type"}
+    ).update_traces(
+        hovertemplate="%{y:.1f} activities - %{fullData.name}<br>%{x|%b %d, %Y}<extra></extra>"
+    ).update_layout(
+        template=dark_template,
+        showlegend=False,
+        xaxis=dict(showgrid=False, title_text=None),
+        yaxis=dict(showgrid=True, title_text=None, gridwidth=1,
+                   gridcolor=dark_grid_color, minor_showgrid=False)
+    )
+
+def build_cumulative_time_fig(start_date):
+    pivot = _build_cumulative_pivot(start_date, "duration_hr")
+    if pivot is None:
+        return _empty_fig("No activities in range")
+    return px.area(
+        pivot, x="date", y=pivot.columns[1:],
+        title="⏱️ Training Hours Accumulation ⏱️",
+        color_discrete_map=color_map,
+        labels={"value": "Hours", "date": "", "variable": "Activity Type"}
+    ).update_traces(
+        hovertemplate="%{y:.1f} hours - %{fullData.name}<br>%{x|%b %d, %Y}<extra></extra>"
+    ).update_layout(
+        template=dark_template,
+        showlegend=False,
+        xaxis=dict(showgrid=False, title_text=None),
+        yaxis=dict(showgrid=True, title_text=None, gridwidth=1,
+                   gridcolor=dark_grid_color, minor_showgrid=False)
+    )
+
 layout_cumulative = dbc.Row([
-    dbc.Col(dcc.Graph(
-        figure=px.area(
-            count_pivot,
-            x="date", y=count_pivot.columns[1:],
-            title="🏆 What Activities Are You Doing Most? 🏆",
-            color_discrete_map=color_map,
-            labels={"value": "Count", "date": "", "variable": "Activity Type"}
-        ).update_traces(
-            hovertemplate="%{y:.1f} activities - %{fullData.name}<br>%{x|%b %Y}<extra></extra>"
-        ).update_layout(
-            template=dark_template,
-            showlegend=False,
-            xaxis=dict(showgrid=False, title_text=None),
-            yaxis=dict(showgrid=True, title_text=None, gridwidth=1,
-                       gridcolor=dark_grid_color, minor_showgrid=False)
-        )
-    ), md=6),
-    dbc.Col(dcc.Graph(
-        figure=px.area(
-            time_pivot,
-            x="date", y=time_pivot.columns[1:],
-            title="⏱️ Training Hours Accumulation ⏱️",
-            color_discrete_map=color_map,
-            labels={"value": "Hours", "date": "", "variable": "Activity Type"}
-        ).update_traces(
-            hovertemplate="%{y:.1f} hours - %{fullData.name}<br>%{x|%b %Y}<extra></extra>"
-        ).update_layout(
-            template=dark_template,
-            showlegend=False,
-            xaxis=dict(showgrid=False, title_text=None),
-            yaxis=dict(showgrid=True, title_text=None, gridwidth=1,
-                       gridcolor=dark_grid_color, minor_showgrid=False)
-        )
-    ), md=6)
+    dbc.Col(dcc.Graph(id='cumulative-count-graph',
+                      figure=build_cumulative_count_fig(None)), md=6),
+    dbc.Col(dcc.Graph(id='cumulative-time-graph',
+                      figure=build_cumulative_time_fig(None)), md=6),
 ])
 
 # 6. Run Performance — pace axis formatted as MM:SS, year as discrete colors
@@ -1042,6 +1142,7 @@ app.layout = dbc.Container([
     html.Hr(),
     fitness_explainer,
     layout_form_recent,
+    filter_dropdown,
     layout_fitness,
     html.Hr(),
     layout_rolling,
@@ -1056,6 +1157,24 @@ app.layout = dbc.Container([
     html.Hr(),
     layout_prs,
 ], fluid=True, style={"backgroundColor": dark_bg_color})
+
+@app.callback(
+    Output('fitness-graph', 'figure'),
+    Output('rolling-graph', 'figure'),
+    Output('heatmap-graph', 'figure'),
+    Output('cumulative-count-graph', 'figure'),
+    Output('cumulative-time-graph', 'figure'),
+    Input('global-filter', 'value'),
+)
+def _update_filtered_charts(filter_value):
+    start = _filter_start_from_value(filter_value)
+    return (
+        build_fitness_fig(start),
+        build_rolling_fig(start),
+        build_heatmap_fig(start),
+        build_cumulative_count_fig(start),
+        build_cumulative_time_fig(start),
+    )
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
