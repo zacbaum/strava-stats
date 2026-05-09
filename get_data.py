@@ -97,6 +97,8 @@ def main():
     if new_activities:
         new_df = pd.DataFrame(new_activities)
         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+        combined_df['start_date'] = pd.to_datetime(combined_df['start_date'])
+        combined_df = combined_df.sort_values(by='start_date', ascending=False)
         combined_df.to_csv('activities.csv', index=False, encoding='utf-8')
         print(f"\n✅ Added {len(new_df)} new activities. Total now: {len(combined_df)}")
     else:

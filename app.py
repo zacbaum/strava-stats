@@ -138,7 +138,7 @@ daily_scores = pd.merge(date_df, daily_load, on='date', how='left').fillna(0)
 daily_scores['fitness'] = daily_scores['training_load'].ewm(span=42, min_periods=1).mean()
 
 # Prepare monthly activity data
-monthly_activity = df.groupby([pd.Grouper(key='start_date_local', freq='M'), 'type'])['duration_hr'].sum().reset_index()
+monthly_activity = df.groupby([pd.Grouper(key='start_date_local', freq='ME'), 'type'])['duration_hr'].sum().reset_index()
 monthly_activity['month'] = monthly_activity['start_date_local'].dt.to_period('M').dt.to_timestamp()
 
 #######################
