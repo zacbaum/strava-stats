@@ -1553,27 +1553,48 @@ if n_routes:
         _zoom = 10.5
     _center = dict(lat=_home_lat, lon=_home_lng)
 
-    # Region clustering — group representative points (every 100th decoded
-    # polyline point) into clusters within 3° (~330 km). Each cluster becomes
+    # Region clustering — group representative points (every 50th decoded
+    # polyline point) into clusters within 1° (~110 km). Each cluster becomes
     # a faint circle marker visible at world/continent zoom and hidden once
     # the user zooms in past city-level so it doesn't obscure the routes.
-    SAMPLE_STEP = 100
-    REGION_THRESHOLD_DEG = 3.0
-    _region_clusters = []
+    # Centre each circle on the cluster's *medoid* (the actual sampled point
+    # closest to the running centroid) so every circle sits on a real route
+    # point — never in dead space between distinct metros.
+    SAMPLE_STEP = 50
+    REGION_THRESHOLD_DEG = 1.0
+    _clusters_raw = []
     for _lat, _lng in zip(_valid_lats[::SAMPLE_STEP], _valid_lngs[::SAMPLE_STEP]):
         _merged = False
-        for _c in _region_clusters:
-            _d = ((_c['lat'] - _lat) ** 2 + (_c['lng'] - _lng) ** 2) ** 0.5
+        for _c in _clusters_raw:
+            _d = ((_c['lat_c'] - _lat) ** 2 + (_c['lng_c'] - _lng) ** 2) ** 0.5
             if _d < REGION_THRESHOLD_DEG:
-                _n = _c['count']
-                _c['lat'] = (_c['lat'] * _n + _lat) / (_n + 1)
-                _c['lng'] = (_c['lng'] * _n + _lng) / (_n + 1)
-                _c['count'] += 1
+                _c['points'].append((float(_lat), float(_lng)))
+                _n = len(_c['points'])
+                _c['lat_c'] = sum(p[0] for p in _c['points']) / _n
+                _c['lng_c'] = sum(p[1] for p in _c['points']) / _n
                 _merged = True
                 break
         if not _merged:
-            _region_clusters.append({'lat': float(_lat), 'lng': float(_lng), 'count': 1})
-    _region_clusters = [_c for _c in _region_clusters if _c['count'] >= 2]
+            _clusters_raw.append({
+                'points': [(float(_lat), float(_lng))],
+                'lat_c': float(_lat),
+                'lng_c': float(_lng),
+            })
+
+    _region_clusters = []
+    for _c in _clusters_raw:
+        if len(_c['points']) < 2:
+            continue
+        _pts = np.array(_c['points'])
+        _cx = float(_pts[:, 0].mean())
+        _cy = float(_pts[:, 1].mean())
+        _dists = np.sqrt((_pts[:, 0] - _cx) ** 2 + (_pts[:, 1] - _cy) ** 2)
+        _idx = int(_dists.argmin())
+        _region_clusters.append({
+            'lat': float(_pts[_idx, 0]),
+            'lng': float(_pts[_idx, 1]),
+            'count': len(_pts),
+        })
 
     # Two-pass rendering for log-like saturation:
     #   Pass 1 (base): warm amber at moderate alpha — guarantees every route
