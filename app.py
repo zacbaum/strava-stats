@@ -27,15 +27,10 @@ df = pd.read_csv("activities.csv", parse_dates=["start_date_local"])
 # tends to be more reliably populated than start_date_local on those entries.
 df.loc[(df['type'] == 'Run') & (df['total_elevation_gain'] == 0), 'start_date_local'] = pd.to_datetime(df['start_date'])
 
-df = df[df["start_date_local"] >= "2023-01-01"]
-
-# Snapshot polylines BEFORE the walk filter — the map heatmap benefits from
-# every available route, including the older walks we exclude from metrics.
+# Polyline snapshot for the map. No date filtering applied to the dataset
+# any more — historical filtering is handled by the global dropdown which
+# defaults to the past year for the filter-aware charts.
 polylines_for_map = df['summary_polyline'].copy() if 'summary_polyline' in df.columns else pd.Series([], dtype=str)
-
-# Walks weren't tracked consistently before 2024 — exclude them so they don't
-# inflate active-day / cumulative metrics with sparse early-period data.
-df = df[~((df['type'] == 'Walk') & (df['start_date_local'] < '2024-01-01'))]
 
 df['type'] = df.apply(
     lambda row: 'Racquet Sports' if row['type'] == 'Workout' and 'pickleball' in str(row.get('name', '')).lower()
@@ -558,7 +553,7 @@ def _make_pie(data, title):
     return fig
 
 layout_pie = dbc.Row([
-    dbc.Col(dcc.Graph(figure=_make_pie(pie_df(), "🌟 All-Time · Since 2023")), md=4),
+    dbc.Col(dcc.Graph(figure=_make_pie(pie_df(), f"🌟 All-Time · Since {int(df['year'].min())}")), md=4),
     dbc.Col(dcc.Graph(figure=_make_pie(pie_df("previous"),
         f"🔙 {prev_year} · {prev_year_hours:.1f}h")), md=4),
     dbc.Col([
@@ -586,6 +581,11 @@ def _filter_start_from_value(value):
     except (ValueError, TypeError):
         return None
 
+# Initial filter window for the four filter-aware charts on first render —
+# matches the dropdown's default value so the page doesn't flash all-time
+# data before the callback fires.
+INITIAL_FILTER_START = today - timedelta(days=365)
+
 filter_dropdown = html.Div([
     html.Span("Filter range:", className="me-3 fw-semibold",
               style={"color": dark_text_color}),
@@ -599,7 +599,7 @@ filter_dropdown = html.Div([
             {"label": "Past Year", "value": "365"},
             {"label": "All Time", "value": "all"},
         ],
-        value="all",
+        value="365",
         inline=True,
         className="d-inline-block",
         labelClassName="me-3",
@@ -748,7 +748,7 @@ def build_fitness_fig(start_date):
     fig.update_xaxes(title_text=None)
     return fig
 
-layout_fitness = dbc.Row([dbc.Col(dcc.Graph(id='fitness-graph', figure=build_fitness_fig(None)), md=12)])
+layout_fitness = dbc.Row([dbc.Col(dcc.Graph(id='fitness-graph', figure=build_fitness_fig(INITIAL_FILTER_START)), md=12)])
 
 # 3. Rolling Volume Chart — global-filter aware
 
@@ -793,7 +793,7 @@ def build_rolling_fig(start_date):
     fig.update_yaxes(title_text="Hours / week", rangemode="tozero")
     return fig
 
-layout_rolling = dbc.Row([dbc.Col(dcc.Graph(id='rolling-graph', figure=build_rolling_fig(None)), md=12)])
+layout_rolling = dbc.Row([dbc.Col(dcc.Graph(id='rolling-graph', figure=build_rolling_fig(INITIAL_FILTER_START)), md=12)])
 
 # 4. Day-of-Week × Hour Heatmap — global-filter aware
 
@@ -890,8 +890,8 @@ def build_cumulative_time_fig(start_date):
 
 # Heatmap + cumulative time side-by-side
 layout_heatmap_cumulative = dbc.Row([
-    dbc.Col(dcc.Graph(id='heatmap-graph', figure=build_heatmap_fig(None)), md=6),
-    dbc.Col(dcc.Graph(id='cumulative-time-graph', figure=build_cumulative_time_fig(None)), md=6),
+    dbc.Col(dcc.Graph(id='heatmap-graph', figure=build_heatmap_fig(INITIAL_FILTER_START)), md=6),
+    dbc.Col(dcc.Graph(id='cumulative-time-graph', figure=build_cumulative_time_fig(INITIAL_FILTER_START)), md=6),
 ])
 
 # 6. Run Performance — pace axis formatted as MM:SS, year as discrete colors
