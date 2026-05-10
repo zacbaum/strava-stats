@@ -1543,15 +1543,37 @@ if n_routes:
             float(_home_lngs.max() - _home_lngs.min()),
             0.05,
         )
-        # Zoom so that ~2× the home spread fits the viewport. Clamped so we
-        # don't end up at street level on a tiny dataset or world view on a
-        # wide one.
+        # Zoom so the home cluster fills most of the viewport. Bumped +1.5
+        # over the natural log2 fit to land near city-level (10–11) for
+        # typical metros instead of regional view.
         import math as _math
-        _zoom = max(8.0, min(12.0, _math.log2(180.0 / _spread)))
+        _zoom = max(9.5, min(13.0, _math.log2(180.0 / _spread) + 1.5))
     else:
         _home_lat, _home_lng = _rough_lat, _rough_lng
-        _zoom = 9.0
+        _zoom = 10.5
     _center = dict(lat=_home_lat, lon=_home_lng)
+
+    # Region clustering — group representative points (every 100th decoded
+    # polyline point) into clusters within 3° (~330 km). Each cluster becomes
+    # a faint circle marker visible at world/continent zoom and hidden once
+    # the user zooms in past city-level so it doesn't obscure the routes.
+    SAMPLE_STEP = 100
+    REGION_THRESHOLD_DEG = 3.0
+    _region_clusters = []
+    for _lat, _lng in zip(_valid_lats[::SAMPLE_STEP], _valid_lngs[::SAMPLE_STEP]):
+        _merged = False
+        for _c in _region_clusters:
+            _d = ((_c['lat'] - _lat) ** 2 + (_c['lng'] - _lng) ** 2) ** 0.5
+            if _d < REGION_THRESHOLD_DEG:
+                _n = _c['count']
+                _c['lat'] = (_c['lat'] * _n + _lat) / (_n + 1)
+                _c['lng'] = (_c['lng'] * _n + _lng) / (_n + 1)
+                _c['count'] += 1
+                _merged = True
+                break
+        if not _merged:
+            _region_clusters.append({'lat': float(_lat), 'lng': float(_lng), 'count': 1})
+    _region_clusters = [_c for _c in _region_clusters if _c['count'] >= 2]
 
     # Two-pass rendering for log-like saturation:
     #   Pass 1 (base): warm amber at moderate alpha — guarantees every route
@@ -1588,7 +1610,33 @@ if n_routes:
         f"{n_routes} routes plotted · indoor sessions don't record GPS"
         "</span>"
     )
-    _map_layout_args = dict(style='carto-darkmatter', zoom=_zoom, center=_center)
+    # Region circles via a static GeoJSON layer with maxzoom so they fade
+    # out automatically when the user zooms in past world/continent view.
+    _regions_geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [_c['lng'], _c['lat']]},
+                "properties": {},
+            }
+            for _c in _region_clusters
+        ],
+    }
+    _region_layer = {
+        "sourcetype": "geojson",
+        "source": _regions_geojson,
+        "type": "circle",
+        "color": "rgba(255, 200, 120, 0.45)",
+        "circle": {"radius": 24},
+        "maxzoom": 6.5,
+    }
+    _map_layout_args = dict(
+        style='carto-darkmatter',
+        zoom=_zoom,
+        center=_center,
+        layers=[_region_layer] if _region_clusters else [],
+    )
     map_fig.update_layout(
         title_text=f"🌍 Where Do You Train?<br>{_coverage}",
         paper_bgcolor=dark_paper_color,
