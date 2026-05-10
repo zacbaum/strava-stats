@@ -1520,28 +1520,67 @@ for _poly in polylines_for_map.dropna():
     all_lngs.append(None)
 
 if n_routes:
-    # Centre the map on the median of all decoded points (robust to outliers
-    # like a single trip to NZ pulling the centre into the Pacific).
-    _valid_lats = [v for v in all_lats if v is not None]
-    _valid_lngs = [v for v in all_lngs if v is not None]
-    _center = dict(
-        lat=float(pd.Series(_valid_lats).median()),
-        lon=float(pd.Series(_valid_lngs).median()),
-    )
+    # Activity-weighted home detection. Step 1: take the median of all decoded
+    # points — robust to a few far-flung trips. Step 2: keep only points
+    # within ~50 km of that median (filters out travel). Step 3: average them
+    # to get the home centroid. Zoom is sized to that home cluster's spread
+    # so the initial view frames your everyday training, not the whole world.
+    _valid_lats = np.array([v for v in all_lats if v is not None])
+    _valid_lngs = np.array([v for v in all_lngs if v is not None])
+    _rough_lat = float(np.median(_valid_lats))
+    _rough_lng = float(np.median(_valid_lngs))
 
-    # Strava-flavoured warm orange with low alpha so overlapping routes
-    # visibly darken (additive alpha compositing = heatmap effect).
-    ROUTE_COLOR = "rgba(252, 76, 2, 0.18)"
+    HOME_RADIUS_DEG = 0.5  # ~55 km at the equator, enough for a metro area
+    _deltas = np.sqrt((_valid_lats - _rough_lat)**2 + (_valid_lngs - _rough_lng)**2)
+    _home_mask = _deltas < HOME_RADIUS_DEG
+    if _home_mask.sum() >= 10:
+        _home_lats = _valid_lats[_home_mask]
+        _home_lngs = _valid_lngs[_home_mask]
+        _home_lat = float(_home_lats.mean())
+        _home_lng = float(_home_lngs.mean())
+        _spread = max(
+            float(_home_lats.max() - _home_lats.min()),
+            float(_home_lngs.max() - _home_lngs.min()),
+            0.05,
+        )
+        # Zoom so that ~2× the home spread fits the viewport. Clamped so we
+        # don't end up at street level on a tiny dataset or world view on a
+        # wide one.
+        import math as _math
+        _zoom = max(8.0, min(12.0, _math.log2(180.0 / _spread)))
+    else:
+        _home_lat, _home_lng = _rough_lat, _rough_lng
+        _zoom = 9.0
+    _center = dict(lat=_home_lat, lon=_home_lng)
+
+    # Two-pass rendering for log-like saturation:
+    #   Pass 1 (base): warm amber at moderate alpha — guarantees every route
+    #                  is clearly visible even on solo trips.
+    #   Pass 2 (heat): deep red at low alpha — additively darkens areas where
+    #                  many routes overlap, producing the heatmap effect
+    #                  without crushing single-line visibility.
+    BASE_COLOR = "rgba(255, 165, 60, 0.25)"
+    HEAT_COLOR = "rgba(252, 30, 0, 0.12)"
 
     _ScatterCls = getattr(go, 'Scattermap', None) or go.Scattermapbox
     _is_new_map_api = _ScatterCls is getattr(go, 'Scattermap', None)
 
-    map_fig = go.Figure(_ScatterCls(
+    map_fig = go.Figure()
+    map_fig.add_trace(_ScatterCls(
         lat=all_lats, lon=all_lngs,
         mode='lines',
-        line=dict(color=ROUTE_COLOR, width=1.5),
+        line=dict(color=BASE_COLOR, width=1.4),
         hoverinfo='skip',
         showlegend=False,
+        name='base',
+    ))
+    map_fig.add_trace(_ScatterCls(
+        lat=all_lats, lon=all_lngs,
+        mode='lines',
+        line=dict(color=HEAT_COLOR, width=1.4),
+        hoverinfo='skip',
+        showlegend=False,
+        name='heat',
     ))
 
     _coverage = (
@@ -1549,7 +1588,7 @@ if n_routes:
         f"{n_routes} routes plotted · indoor sessions don't record GPS"
         "</span>"
     )
-    _map_layout_args = dict(style='carto-darkmatter', zoom=1.2, center=_center)
+    _map_layout_args = dict(style='carto-darkmatter', zoom=_zoom, center=_center)
     map_fig.update_layout(
         title_text=f"🌍 Where Do You Train?<br>{_coverage}",
         paper_bgcolor=dark_paper_color,
