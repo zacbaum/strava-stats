@@ -36,6 +36,9 @@ def main():
         # IANA timezone is populated for every activity — used as the primary
         # fallback location when start_latlng is empty (indoor sessions etc.).
         'timezone',
+        # Encoded GPS polyline of the activity's route (extracted from the
+        # nested `map` object below). Used to render route lines on the map.
+        'summary_polyline',
     ]
 
     # Step 1: Get access token using refresh token
@@ -98,7 +101,10 @@ def main():
             act_id = str(act.get('id'))
             if act_id in existing_ids:
                 continue
-            new_activities.append({col: act.get(col, None) for col in columns})
+            row = {col: act.get(col, None) for col in columns}
+            # summary_polyline is nested inside the `map` object
+            row['summary_polyline'] = (act.get('map') or {}).get('summary_polyline') or None
+            new_activities.append(row)
             new_count += 1
 
         print(f"📄 Page {page}: {len(page_data)} fetched, {new_count} new")

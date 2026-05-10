@@ -29,6 +29,10 @@ df.loc[(df['type'] == 'Run') & (df['total_elevation_gain'] == 0), 'start_date_lo
 
 df = df[df["start_date_local"] >= "2023-01-01"]
 
+# Snapshot polylines BEFORE the walk filter — the map heatmap benefits from
+# every available route, including the older walks we exclude from metrics.
+polylines_for_map = df['summary_polyline'].copy() if 'summary_polyline' in df.columns else pd.Series([], dtype=str)
+
 # Walks weren't tracked consistently before 2024 — exclude them so they don't
 # inflate active-day / cumulative metrics with sparse early-period data.
 df = df[~((df['type'] == 'Walk') & (df['start_date_local'] < '2024-01-01'))]
@@ -66,6 +70,38 @@ def _parse_latlng(s):
 _latlng = df['start_latlng'].apply(_parse_latlng)
 df['lat'] = _latlng.apply(lambda x: x[0])
 df['lng'] = _latlng.apply(lambda x: x[1])
+
+# Google encoded polyline decoder — turns a string like "_p~iF~ps|U..." into
+# a list of (lat, lng) tuples. Used to render activity routes on the map.
+def decode_polyline(encoded):
+    if not isinstance(encoded, str) or not encoded:
+        return []
+    coords = []
+    index, lat, lng = 0, 0, 0
+    n = len(encoded)
+    while index < n:
+        result, shift = 0, 0
+        while index < n:
+            b = ord(encoded[index]) - 63
+            index += 1
+            result |= (b & 0x1f) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlat = ~(result >> 1) if (result & 1) else (result >> 1)
+        lat += dlat
+        result, shift = 0, 0
+        while index < n:
+            b = ord(encoded[index]) - 63
+            index += 1
+            result |= (b & 0x1f) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlng = ~(result >> 1) if (result & 1) else (result >> 1)
+        lng += dlng
+        coords.append((lat * 1e-5, lng * 1e-5))
+    return coords
 
 today = datetime.now().date()
 latest_year = df['year'].max()
@@ -1466,49 +1502,63 @@ layout_yoy_trajectory = dbc.Row([dbc.Col(dcc.Graph(figure=yoy_fig), md=12)])
 # MAP — where you train
 #######################
 
-map_df = df[df['lat'].notna() & df['lng'].notna()].copy()
-if not map_df.empty:
-    map_df['date_str'] = map_df['date'].astype(str)
-    map_df['hours_str'] = map_df['duration_hr'].apply(lambda x: f"{x:.2f}")
+all_lats = []
+all_lngs = []
+n_routes = 0
+for _poly in polylines_for_map.dropna():
+    if not isinstance(_poly, str) or not _poly:
+        continue
+    _coords = decode_polyline(_poly)
+    if not _coords:
+        continue
+    n_routes += 1
+    for _lat, _lng in _coords:
+        all_lats.append(_lat)
+        all_lngs.append(_lng)
+    # None separator so segments don't connect across activities
+    all_lats.append(None)
+    all_lngs.append(None)
 
-    _gps_coverage = (
+if n_routes:
+    # Centre the map on the median of all decoded points (robust to outliers
+    # like a single trip to NZ pulling the centre into the Pacific).
+    _valid_lats = [v for v in all_lats if v is not None]
+    _valid_lngs = [v for v in all_lngs if v is not None]
+    _center = dict(
+        lat=float(pd.Series(_valid_lats).median()),
+        lon=float(pd.Series(_valid_lngs).median()),
+    )
+
+    # Strava-flavoured warm orange with low alpha so overlapping routes
+    # visibly darken (additive alpha compositing = heatmap effect).
+    ROUTE_COLOR = "rgba(252, 76, 2, 0.18)"
+
+    _ScatterCls = getattr(go, 'Scattermap', None) or go.Scattermapbox
+    _is_new_map_api = _ScatterCls is getattr(go, 'Scattermap', None)
+
+    map_fig = go.Figure(_ScatterCls(
+        lat=all_lats, lon=all_lngs,
+        mode='lines',
+        line=dict(color=ROUTE_COLOR, width=1.5),
+        hoverinfo='skip',
+        showlegend=False,
+    ))
+
+    _coverage = (
         f"<span style='font-size: 0.65em; color:{muted_text_color}; font-weight:400'>"
-        f"{len(map_df)} of {len(df)} activities · indoor sessions don't record GPS"
+        f"{n_routes} routes plotted · indoor sessions don't record GPS"
         "</span>"
     )
-    _map_title = f"🌍 Where Do You Train?<br>{_gps_coverage}"
-    _map_kwargs = dict(
-        data_frame=map_df, lat='lat', lon='lng',
-        color='type', color_discrete_map=color_map,
-        size='duration_hr', size_max=14,
-        opacity=0.7,
-        hover_name='name',
-        # Empty hover_data — we set everything via custom hovertemplate below
-        # so no DataFrame columns can leak through (timezone, location_*, etc).
-        hover_data={c: False for c in map_df.columns if c != 'name'},
-        zoom=1.2,
-        title=_map_title,
-    )
-    if hasattr(px, 'scatter_map'):
-        map_fig = px.scatter_map(map_style='carto-darkmatter', **_map_kwargs)
-    else:
-        map_fig = px.scatter_mapbox(mapbox_style='carto-darkmatter', **_map_kwargs)
-
-    # Lock the hover content explicitly via customdata so no other DataFrame
-    # columns (raw timezone strings etc.) can ever appear in tooltips.
-    for trace in map_fig.data:
-        type_name = trace.name
-        sub = map_df[map_df['type'] == type_name]
-        trace.customdata = sub[['date_str', 'hours_str']].values
-        trace.hovertemplate = (
-            "<b>%{hovertext}</b><br>"
-            "%{customdata[0]} · %{customdata[1]}h<extra></extra>"
-        )
+    _map_layout_args = dict(style='carto-darkmatter', zoom=1.2, center=_center)
     map_fig.update_layout(
-        template=dark_template,
-        height=460,
+        title_text=f"🌍 Where Do You Train?<br>{_coverage}",
+        paper_bgcolor=dark_paper_color,
+        plot_bgcolor=dark_paper_color,
+        font=chart_font,
+        height=520,
         margin=dict(l=10, r=10, t=60, b=10),
-        legend=dict(title=dict(text="")),
+        showlegend=False,
+        **({'map': _map_layout_args} if _is_new_map_api else {'mapbox': _map_layout_args}),
     )
     layout_map = dbc.Row([dbc.Col(dcc.Graph(figure=map_fig), md=12)])
 else:
