@@ -117,7 +117,11 @@ def main():
     if new_activities:
         new_df = pd.DataFrame(new_activities)
         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-        combined_df['start_date'] = pd.to_datetime(combined_df['start_date'])
+        # format='ISO8601' handles both pandas' default serialised form
+        # ("2025-06-17 06:44:20+00:00") and Strava's API form ("2025-06-17T06:44:20Z")
+        # in the same column — they differ after a FORCE_REFRESH writes the CSV
+        # in pandas form and the next incremental pull adds API-form rows.
+        combined_df['start_date'] = pd.to_datetime(combined_df['start_date'], format='ISO8601')
         combined_df = combined_df.sort_values(by='start_date', ascending=False)
         combined_df.to_csv('activities.csv', index=False, encoding='utf-8')
         print(f"\n✅ Added {len(new_df)} new activities. Total now: {len(combined_df)}")
