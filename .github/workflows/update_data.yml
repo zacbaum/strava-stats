@@ -1,8 +1,8 @@
-name: Daily Strava Data Pull
+name: Strava Data Pull
 
 on:
   schedule:
-    - cron: "0 10 * * *"  # Every day at 10:00 UTC
+    - cron: "0 */3 * * *"  # Every 3 hours on the hour (00, 03, 06, … 21 UTC)
   workflow_dispatch:
 
 jobs:
