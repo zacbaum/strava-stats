@@ -32,14 +32,17 @@ jobs:
           REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
         run: python get_data.py
 
-      - name: Commit and push if `activities.csv` changed
+      - name: Rebuild static dashboard for GitHub Pages
+        run: python build_static.py
+
+      - name: Commit and push if anything changed
         run: |
           git config --global user.name "Strava Bot"
           git config --global user.email "bot@github.com"
-          git add activities.csv
+          git add activities.csv docs/
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "🔄 Auto-update activities.csv"
+            git commit -m "🔄 Auto-update activities.csv + rebuild docs"
             git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git HEAD:main
           fi

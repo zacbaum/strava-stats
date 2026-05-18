@@ -27,7 +27,10 @@ jobs:
           pip install -r requirements.txt
 
       - name: Syntax check
-        run: python -m py_compile app.py get_data.py
+        run: python -m py_compile app.py get_data.py build_static.py
 
       - name: Import smoke test (builds all figures + layout)
         run: python -c "import app; print('imported OK; current_form=', round(app.current_form, 2))"
+
+      - name: Static build smoke test (renders docs/index.html)
+        run: python build_static.py

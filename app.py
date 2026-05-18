@@ -903,83 +903,77 @@ def _safe_pace_str(p):
         return "—"
     return _format_pace(p)
 
-layout_scatter = dbc.Row([
-    dbc.Col(dcc.Graph(
-        figure=px.scatter(
-            run_df,
-            x="date", y="pace_min_per_km",
-            size="distance", color="average_heartrate",
-            title="🏃 Run Pace Over Time",
-            labels={"pace_min_per_km": "Pace", "date": "",
-                    "average_heartrate": "Avg HR", "distance": "Distance (m)"},
-            color_continuous_scale="RdYlBu_r",
-            hover_data=["name", "distance", "average_heartrate", "moving_time"]
-        ).update_traces(
-            marker=dict(opacity=0.75, line=dict(width=0.5, color=dark_paper_color),
-                        sizemin=4),
-            selector=dict(mode='markers'),
-            hovertemplate=
-                "<b>%{customdata[0]} /km</b><br>"
-                "%{customdata[1]:.1f} km · %{customdata[3]}<br>"
-                "Avg HR: %{customdata[2]}<extra></extra>",
-            customdata=run_df.apply(lambda x: [
-                _safe_pace_str(x['pace_min_per_km']),
-                (x['distance'] or 0) / 1000,
-                f"{int(x['average_heartrate'])} bpm" if pd.notna(x['average_heartrate']) else "—",
-                f"{int(x['moving_time']//60):02d}:{int(x['moving_time']%60):02d}"
-            ], axis=1).tolist()
-        ).update_layout(
-            template=dark_template,
-            height=440,
-            xaxis=dict(title_text=None),
-            yaxis=dict(
-                title_text="Pace (min/km)", autorange="reversed",
-                tickvals=pace_ticks, ticktext=pace_tick_labels,
-            ),
-            coloraxis_colorbar=dict(
-                title=dict(text="Avg HR", font=dict(size=11)),
-                thickness=12, len=0.8, outlinewidth=0,
-                tickformat="d", tickfont=dict(size=10),
-            ),
-        )
-    ), md=6),
+# Named figures (extracted so the static-export script can grab them).
+scatter_pace_fig = px.scatter(
+    run_df,
+    x="date", y="pace_min_per_km",
+    size="distance", color="average_heartrate",
+    title="🏃 Run Pace Over Time",
+    labels={"pace_min_per_km": "Pace", "date": "",
+            "average_heartrate": "Avg HR", "distance": "Distance (m)"},
+    color_continuous_scale="RdYlBu_r",
+    hover_data=["name", "distance", "average_heartrate", "moving_time"]
+).update_traces(
+    marker=dict(opacity=0.75, line=dict(width=0.5, color=dark_paper_color), sizemin=4),
+    selector=dict(mode='markers'),
+    hovertemplate=
+        "<b>%{customdata[0]} /km</b><br>"
+        "%{customdata[1]:.1f} km · %{customdata[3]}<br>"
+        "Avg HR: %{customdata[2]}<extra></extra>",
+    customdata=run_df.apply(lambda x: [
+        _safe_pace_str(x['pace_min_per_km']),
+        (x['distance'] or 0) / 1000,
+        f"{int(x['average_heartrate'])} bpm" if pd.notna(x['average_heartrate']) else "—",
+        f"{int(x['moving_time']//60):02d}:{int(x['moving_time']%60):02d}"
+    ], axis=1).tolist()
+).update_layout(
+    template=dark_template,
+    height=440,
+    xaxis=dict(title_text=None),
+    yaxis=dict(title_text="Pace (min/km)", autorange="reversed",
+               tickvals=pace_ticks, ticktext=pace_tick_labels),
+    coloraxis_colorbar=dict(
+        title=dict(text="Avg HR", font=dict(size=11)),
+        thickness=12, len=0.8, outlinewidth=0,
+        tickformat="d", tickfont=dict(size=10),
+    ),
+)
 
-    dbc.Col(dcc.Graph(
-        figure=px.scatter(
-            run_df,
-            x="average_heartrate", y="pace_min_per_km",
-            color="year_str", size="distance",
-            color_discrete_map=year_color_map,
-            category_orders={"year_str": [str(y) for y in sorted_years]},
-            title="❤️ Run Efficiency · Pace vs HR",
-            labels={"pace_min_per_km": "Pace", "average_heartrate": "Avg HR (bpm)",
-                    "year_str": "Year", "distance": "Distance (m)"},
-            hover_data=["name", "date", "distance", "moving_time"]
-        ).update_traces(
-            marker=dict(opacity=0.78, line=dict(width=0.5, color=dark_paper_color),
-                        sizemin=4),
-            selector=dict(mode='markers'),
-            hovertemplate=
-                "<b>%{customdata[0]} /km @ %{x:.0f} bpm</b><br>"
-                "%{customdata[2]:.1f} km · %{customdata[3]}<br>"
-                "%{customdata[1]}<extra></extra>",
-            customdata=run_df.apply(lambda x: [
-                _safe_pace_str(x['pace_min_per_km']),
-                x['date'],
-                (x['distance'] or 0) / 1000,
-                f"{int(x['moving_time']//60):02d}:{int(x['moving_time']%60):02d}"
-            ], axis=1).tolist()
-        ).update_layout(
-            template=dark_template,
-            height=440,
-            xaxis=dict(title_text="Avg HR (bpm)", showgrid=True),
-            yaxis=dict(
-                title_text="Pace (min/km)", autorange="reversed",
-                tickvals=pace_ticks, ticktext=pace_tick_labels,
-            ),
-            legend=dict(title=dict(text="Year")),
-        )
-    ), md=6)
+scatter_efficiency_fig = px.scatter(
+    run_df,
+    x="average_heartrate", y="pace_min_per_km",
+    color="year_str", size="distance",
+    color_discrete_map=year_color_map,
+    category_orders={"year_str": [str(y) for y in sorted_years]},
+    title="❤️ Run Efficiency · Pace vs HR",
+    labels={"pace_min_per_km": "Pace", "average_heartrate": "Avg HR (bpm)",
+            "year_str": "Year", "distance": "Distance (m)"},
+    hover_data=["name", "date", "distance", "moving_time"]
+).update_traces(
+    marker=dict(opacity=0.78, line=dict(width=0.5, color=dark_paper_color), sizemin=4),
+    selector=dict(mode='markers'),
+    hovertemplate=
+        "<b>%{customdata[0]} /km @ %{x:.0f} bpm</b><br>"
+        "%{customdata[2]:.1f} km · %{customdata[3]}<br>"
+        "%{customdata[1]}<extra></extra>",
+    customdata=run_df.apply(lambda x: [
+        _safe_pace_str(x['pace_min_per_km']),
+        x['date'],
+        (x['distance'] or 0) / 1000,
+        f"{int(x['moving_time']//60):02d}:{int(x['moving_time']%60):02d}"
+    ], axis=1).tolist()
+).update_layout(
+    template=dark_template,
+    height=440,
+    xaxis=dict(title_text="Avg HR (bpm)", showgrid=True),
+    yaxis=dict(title_text="Pace (min/km)", autorange="reversed",
+               tickvals=pace_ticks, ticktext=pace_tick_labels),
+    legend=dict(title=dict(text="Year")),
+)
+
+layout_scatter = dbc.Row([
+    dbc.Col(dcc.Graph(figure=scatter_pace_fig), md=6),
+    dbc.Col(dcc.Graph(figure=scatter_efficiency_fig), md=6),
 ])
 
 # 7. Bubble calendar — last 8 weeks
