@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile app.py)",
+      "Bash(python -m py_compile get_data.py)",
+      "Bash(python -m py_compile app.py get_data.py)"
+    ]
+  }
+}
