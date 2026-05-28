@@ -173,11 +173,8 @@ kpi_html = "".join([
     ),
     kpi_card_html("Weekly Streak", f"{app.week_streak} weeks",
                   f"{app.week_streak_activities} activities"),
-    kpi_card_html(
-        "Last Activity", app.last_activity_date.strftime("%b %d"),
-        (f"{app.days_since_last} day{'s' if app.days_since_last != 1 else ''} ago"
-         if app.days_since_last > 0 else "today"),
-    ),
+    kpi_card_html("Day Streak", f"{app.current_streak} days",
+                  f"ending {app.last_activity_date.strftime('%b %d')}"),
 ])
 
 # Insights

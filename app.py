@@ -657,13 +657,17 @@ _acwr_max_visible = max(1.7, float(acwr_recent['acwr'].max()) + 0.1
 
 combined_form_acwr_fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-# Form zone shading (primary y-axis only)
+# Form zone shading on the primary y-axis. The bands serve both axes since the
+# right (ACWR) axis is inverted — the "danger" end aligns at the bottom of
+# the chart for both metrics: red at the bottom = Overreaching Form AND
+# High-Risk Load. Alpha bumped to 0.18 so the bands actually register against
+# the dark background.
 for y0, y1, _, hex_color in zone_specs:
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     combined_form_acwr_fig.add_hrect(
-        y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.10)",
-        line_width=0, layer="below"
+        y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.18)",
+        line_width=0, layer="below",
     )
 
 # Form line + marker (left axis)
@@ -858,7 +862,7 @@ def build_heatmap_fig(start_date):
     fig.update_layout(
         template=dark_template,
         title_text="🕓 When Do You Train? · Day × Hour",
-        height=380,
+        height=400,
     )
     fig.update_xaxes(title_text=None, tickfont=dict(size=11), showgrid=False)
     fig.update_yaxes(title_text=None, autorange="reversed", showgrid=False)
@@ -931,7 +935,7 @@ def build_cumulative_time_fig(start_date):
         showlegend=True,
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1,
                     font=dict(size=10)),
-        height=380,
+        height=400,
         hovermode="x unified",
         margin=dict(l=50, r=20, t=70, b=20),
     )
@@ -1515,7 +1519,7 @@ yoy_fig.update_layout(
     template=dark_template,
     title_text=f"📅 Year-over-Year · Cumulative Hours · {prev_year} vs {latest_year}",
     hovermode="x unified",
-    height=340,
+    height=440,
     xaxis=dict(tickmode='array', tickvals=month_starts, ticktext=month_labels,
                range=[0, 366], showgrid=False),
     yaxis=dict(title_text="Hours", rangemode="tozero", tickformat=".0f"),
