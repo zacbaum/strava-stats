@@ -282,17 +282,16 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<div class="row">
-  <div class="col-md-4"><div id="pie-all"></div></div>
-  <div class="col-md-4"><div id="pie-prev"></div></div>
-  <div class="col-md-4">
-    <div id="pie-ytd"></div>
-    <div class="text-center mt-1" style="font-size:0.95rem">{pie_subtitle_html}</div>
-  </div>
+<!-- Section A: Form + Load explainer + chart -->
+<div class="px-4 py-2 mb-2" style="line-height:1.6;color:{TEXT};font-size:0.92rem">
+{explainer_html}
 </div>
+
+<div class="row"><div class="col-md-12"><div id="combined-form-acwr"></div></div></div>
 
 <hr>
 
+<!-- Section B: Year heatmap + tables -->
 <div class="row"><div class="col-md-12"><div id="year-heatmap"></div></div></div>
 
 <hr>
@@ -318,12 +317,7 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<div class="px-4 py-2 mb-2" style="line-height:1.6;color:{TEXT};font-size:0.92rem">
-{explainer_html}
-</div>
-
-<div class="row"><div class="col-md-12"><div id="combined-form-acwr"></div></div></div>
-
+<!-- Section C: Filter + fitness/YoY + heatmap/cumulative -->
 <div class="d-flex align-items-center justify-content-center my-3 px-3 py-2 filter-bar">
   <span class="me-3 fw-semibold" style="color:{TEXT}">Filter range:</span>
   <select id="global-filter" class="form-select w-auto">
@@ -331,7 +325,6 @@ HTML = f"""<!DOCTYPE html>
   </select>
 </div>
 
-<!-- Fitness (filter-aware) + YoY trajectory side-by-side -->
 <div class="row">
   <div class="col-md-6">
 {filter_aware_divs_html('fitness')}
@@ -352,6 +345,7 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
+<!-- Section D: Reference / all-time -->
 <div class="row">
   <div class="col-md-6"><div id="scatter-pace"></div></div>
   <div class="col-md-6"><div id="scatter-efficiency"></div></div>
@@ -360,6 +354,17 @@ HTML = f"""<!DOCTYPE html>
 <hr>
 
 <div class="row"><div class="col-md-12"><div id="map"></div></div></div>
+
+<hr>
+
+<div class="row">
+  <div class="col-md-4"><div id="pie-all"></div></div>
+  <div class="col-md-4"><div id="pie-prev"></div></div>
+  <div class="col-md-4">
+    <div id="pie-ytd"></div>
+    <div class="text-center mt-1" style="font-size:0.95rem">{pie_subtitle_html}</div>
+  </div>
+</div>
 
 <hr>
 

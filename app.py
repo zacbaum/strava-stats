@@ -657,16 +657,15 @@ _acwr_max_visible = max(1.7, float(acwr_recent['acwr'].max()) + 0.1
 
 combined_form_acwr_fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-# Form zone shading on the primary y-axis. The bands serve both axes since the
-# right (ACWR) axis is inverted — the "danger" end aligns at the bottom of
-# the chart for both metrics: red at the bottom = Overreaching Form AND
-# High-Risk Load. Alpha bumped to 0.18 so the bands actually register against
-# the dark background.
+# Form zone shading on the primary y-axis — colour bands serve both axes
+# since the right (ACWR) axis is inverted, so the bottom-of-chart "danger"
+# stripe (red) aligns with Overreaching Form AND High-Risk Load. Alpha bumped
+# to 0.28 so the stripes are unambiguous against the dark background.
 for y0, y1, _, hex_color in zone_specs:
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     combined_form_acwr_fig.add_hrect(
-        y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.18)",
+        y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.28)",
         line_width=0, layer="below",
     )
 
@@ -1708,28 +1707,37 @@ else:
     layout_map = html.Div()
 
 # Final app layout
+# Section A — Current state (daily glance): KPIs · Insights · Form+Load.
+# Section B — Recent activity: Year heatmap · Bonus tables.
+# Section C — Trends: Filter · Fitness+YoY trajectory · Heatmap+Cumulative.
+# Section D — Reference / all-time: Run scatters · Map · Pies · PRs.
 app.layout = dbc.Container([
     html.H1("Strava Training Dashboard", className="text-center my-4 dashboard-title"),
+    # Section A
     layout_kpi,
     layout_insights,
     html.Hr(),
-    layout_pie,
+    fitness_explainer,
+    layout_form_recent,
     html.Hr(),
+    # Section B
     layout_year_heatmap,
     html.Hr(),
     layout_bonus,
     layout_yoy,
     html.Hr(),
-    fitness_explainer,
-    layout_form_recent,
+    # Section C
     filter_dropdown,
     layout_fitness_yoy_row,
     html.Hr(),
     layout_heatmap_cumulative,
     html.Hr(),
+    # Section D
     layout_scatter,
     html.Hr(),
     layout_map,
+    html.Hr(),
+    layout_pie,
     html.Hr(),
     layout_prs,
 ], fluid=True, style={"backgroundColor": dark_bg_color})
