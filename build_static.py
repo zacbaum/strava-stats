@@ -56,10 +56,10 @@ figs["pie-ytd"] = app._make_pie(app.pie_df("YTD"),
 
 # Other named figures
 figs["form-recent"] = app.form_recent_fig
+figs["acwr-recent"] = app.acwr_recent_fig
 figs["yoy"] = app.yoy_fig
 figs["year-heatmap"] = app.year_heatmap_fig
-figs["hr-zones"] = app.hr_zones_fig
-figs["duration-hist"] = app.duration_hist_fig
+figs["streak-history"] = app.streak_history_fig
 figs["map"] = app.map_fig
 figs["scatter-pace"] = app.scatter_pace_fig
 figs["scatter-efficiency"] = app.scatter_efficiency_fig
@@ -209,6 +209,56 @@ comparative_stats_table = df_to_table_html(
     app.comparative_stats_df.to_dict("records"),
     list(app.comparative_stats_df.columns),
 )
+monthly_stats_table = df_to_table_html(
+    app.monthly_stats_df.to_dict("records"),
+    list(app.monthly_stats_df.columns),
+)
+
+# Weekly + Annual summary card grids
+def _summary_stat_html(label, value, sub=""):
+    return f"""<div class="col-md-2 col-sm-4 col-6 mb-2">
+  <div class="card text-center h-100" style="{CARD_STYLE}">
+    <div class="card-body py-2">
+      <div class="text-uppercase" style="color:{MUTED};font-size:0.7rem;letter-spacing:0.06em;font-weight:500">{label}</div>
+      <div class="fw-bold mt-1" style="font-size:1.25rem;line-height:1.1;color:{TEXT}">{value}</div>
+      <div style="color:{MUTED};font-size:0.72rem;margin-top:0.2rem">{sub}</div>
+    </div>
+  </div>
+</div>"""
+
+def _delta_sub(now, ref, unit):
+    if ref <= 0:
+        return ""
+    diff = now - ref
+    sign = "+" if diff >= 0 else "−"
+    return f"{sign}{abs(diff):.1f}{unit} vs avg"
+
+ws_this = app.ws_this
+ws_avg = app.ws_avg
+weekly_summary_html = "".join([
+    _summary_stat_html("Hours", f"{ws_this['hours']:.1f}h",
+                       _delta_sub(ws_this['hours'], ws_avg['hours'], 'h')),
+    _summary_stat_html("Sessions", f"{ws_this['sessions']}",
+                       _delta_sub(ws_this['sessions'], ws_avg['sessions'], '')),
+    _summary_stat_html("Distance", f"{ws_this['distance_km']:.1f} km",
+                       _delta_sub(ws_this['distance_km'], ws_avg['distance_km'], 'km')),
+    _summary_stat_html("Elevation", f"{int(ws_this['elevation_m'])} m",
+                       _delta_sub(ws_this['elevation_m'], ws_avg['elevation_m'], 'm')),
+    _summary_stat_html("TRIMP Load", f"{int(ws_this['trimp'])}",
+                       _delta_sub(ws_this['trimp'], ws_avg['trimp'], '')),
+    _summary_stat_html("kJ Burned", f"{int(ws_this['kilojoules']):,}".replace(',', ' '),
+                       _delta_sub(ws_this['kilojoules'], ws_avg['kilojoules'], '')),
+])
+
+ytd = app.ytd_stats
+annual_summary_html = "".join([
+    _summary_stat_html("Hours", f"{ytd['hours']:.0f}h"),
+    _summary_stat_html("Sessions", f"{ytd['sessions']}"),
+    _summary_stat_html("Distance", f"{ytd['distance_km']:.0f} km"),
+    _summary_stat_html("Elevation", f"{int(ytd['elevation_m']):,} m".replace(',', ' ')),
+    _summary_stat_html("TRIMP Load", f"{int(ytd['trimp']):,}".replace(',', ' ')),
+    _summary_stat_html("kJ Burned", f"{int(ytd['kilojoules']):,}".replace(',', ' ')),
+])
 
 # Fitness explainer — shared markdown from app.py, converted to minimal HTML.
 explainer_html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", app.FITNESS_EXPLAINER_MD)
@@ -289,6 +339,18 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
+<h4 class="text-center my-3">📆 This Week</h4>
+<div class="row g-3 mb-2">
+{weekly_summary_html}
+</div>
+
+<h4 class="text-center my-3">🗓️ {app.latest_year} So Far</h4>
+<div class="row g-3 mb-2">
+{annual_summary_html}
+</div>
+
+<hr>
+
 <div class="row">
   <div class="col-md-4"><div id="pie-all"></div></div>
   <div class="col-md-4"><div id="pie-prev"></div></div>
@@ -314,6 +376,14 @@ HTML = f"""<!DOCTYPE html>
     {recent_activities_table}
   </div>
 </div>
+
+<div class="row mt-4">
+  <div class="col-md-12">
+    <h4 class="text-center my-3">📈 Last 6 Months</h4>
+    {monthly_stats_table}
+  </div>
+</div>
+
 <div class="row mt-4">
   <div class="col-md-3"></div>
   <div class="col-md-6">
@@ -321,6 +391,10 @@ HTML = f"""<!DOCTYPE html>
     {comparative_stats_table}
   </div>
 </div>
+
+<hr>
+
+<div class="row"><div class="col-md-12"><div id="streak-history"></div></div></div>
 
 <hr>
 
@@ -332,7 +406,10 @@ HTML = f"""<!DOCTYPE html>
 {explainer_html}
 </div>
 
-<div class="row"><div class="col-md-12"><div id="form-recent"></div></div></div>
+<div class="row">
+  <div class="col-md-6"><div id="form-recent"></div></div>
+  <div class="col-md-6"><div id="acwr-recent"></div></div>
+</div>
 
 <div class="d-flex align-items-center justify-content-center my-3 px-3 py-2 filter-bar">
   <span class="me-3 fw-semibold" style="color:{TEXT}">Filter range:</span>
@@ -364,18 +441,10 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<div class="row"><div class="col-md-12"><div id="hr-zones"></div></div></div>
-
-<hr>
-
 <div class="row">
   <div class="col-md-6"><div id="scatter-pace"></div></div>
   <div class="col-md-6"><div id="scatter-efficiency"></div></div>
 </div>
-
-<hr>
-
-<div class="row"><div class="col-md-12"><div id="duration-hist"></div></div></div>
 
 <hr>
 
