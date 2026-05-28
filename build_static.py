@@ -10,7 +10,6 @@ Run locally:   python build_static.py
 """
 import json
 import re
-import shutil
 from pathlib import Path
 
 import plotly.io as pio
@@ -207,16 +206,8 @@ comparative_stats_table = df_to_table_html(
     list(app.comparative_stats_df.columns),
 )
 
-# Fitness explainer (already plain markdown — convert minimal subset to HTML)
-explainer_md = (
-    "**Fitness (CTL)** — 42-day rolling training load. Your long-term base.\n"
-    "**Fatigue (ATL)** — 7-day rolling load. How loaded your body is right now.\n"
-    "**Form (TSB) = Fitness − Fatigue.** Positive = fresh, negative = tired.\n\n"
-    "Bands: above **+5** fresh / peaked &nbsp;·&nbsp; **+5 to −10** optimal training "
-    "zone &nbsp;·&nbsp; **−10 to −30** productive (building, accept the tired) "
-    "&nbsp;·&nbsp; below **−30** overreaching."
-)
-explainer_html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", explainer_md)
+# Fitness explainer — shared markdown from app.py, converted to minimal HTML.
+explainer_html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", app.FITNESS_EXPLAINER_MD)
 explainer_html = explainer_html.replace("\n\n", "<br><br>").replace("\n", "<br>")
 
 # Filter dropdown options

@@ -1,3 +1,4 @@
+import ast
 import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, dash_table, dcc, html
@@ -27,10 +28,9 @@ df = pd.read_csv("activities.csv", parse_dates=["start_date_local"])
 # tends to be more reliably populated than start_date_local on those entries.
 df.loc[(df['type'] == 'Run') & (df['total_elevation_gain'] == 0), 'start_date_local'] = pd.to_datetime(df['start_date'])
 
-# Polyline snapshot for the map. No date filtering applied to the dataset
-# any more — historical filtering is handled by the global dropdown which
-# defaults to the past year for the filter-aware charts.
-polylines_for_map = df['summary_polyline'].copy() if 'summary_polyline' in df.columns else pd.Series([], dtype=str)
+# Polyline snapshot for the map. Trend-chart scoping is handled by the
+# global filter dropdown, not by upstream slicing here.
+polylines_for_map = df['summary_polyline'].copy()
 
 df['type'] = df.apply(
     lambda row: 'Racquet Sports' if row['type'] == 'Workout' and 'pickleball' in str(row.get('name', '')).lower()
@@ -50,7 +50,6 @@ df['hour_of_day'] = df['start_date_local'].dt.hour
 df['weekday_idx'] = df['start_date_local'].dt.weekday  # 0 = Monday
 
 # Parse start_latlng — Strava stores it as a string like "[51.676, -0.607]" or "[]"
-import ast
 def _parse_latlng(s):
     if not isinstance(s, str) or s in ('', '[]'):
         return (None, None)
@@ -255,7 +254,6 @@ progress_percent = f"{year_progress:.1%}"
 
 latest_scores = daily_scores.iloc[-1]
 current_fitness = latest_scores['fitness']
-current_fatigue = latest_scores['fatigue']
 current_form = latest_scores['form']
 
 def form_status(tsb):
@@ -299,33 +297,6 @@ days_since_last = (today - last_activity_date).days
 
 monthly_activity = df.groupby([pd.Grouper(key='start_date_local', freq='ME'), 'type'])['duration_hr'].sum().reset_index()
 monthly_activity['month'] = monthly_activity['start_date_local'].dt.to_period('M').dt.to_timestamp()
-
-#######################
-# CUMULATIVE STATS
-#######################
-
-cumulative_df = df.copy()
-cumulative_df = cumulative_df.sort_values("start_date_local")
-cumulative_df["activity_count"] = 1
-
-all_dates = pd.date_range(start=df['date'].min(), end=df['date'].max(), freq='D')
-date_df = pd.DataFrame({"date": all_dates.date})
-
-count_df = cumulative_df.groupby(["date", "type"])["activity_count"].sum().reset_index()
-count_pivot = count_df.pivot(index='date', columns='type', values='activity_count').fillna(0)
-count_pivot = pd.merge(date_df, count_pivot.reset_index(), on='date', how='left').fillna(0)
-count_pivot = count_pivot.sort_values('date')
-for col in count_pivot.columns:
-    if col != 'date':
-        count_pivot[col] = count_pivot[col].cumsum()
-
-time_df = cumulative_df.groupby(["date", "type"])["duration_hr"].sum().reset_index()
-time_pivot = time_df.pivot(index='date', columns='type', values='duration_hr').fillna(0)
-time_pivot = pd.merge(date_df, time_pivot.reset_index(), on='date', how='left').fillna(0)
-time_pivot = time_pivot.sort_values('date')
-for col in time_pivot.columns:
-    if col != 'date':
-        time_pivot[col] = time_pivot[col].cumsum()
 
 #######################
 # WEEKDAY × HOUR HEATMAP
@@ -610,15 +581,19 @@ filter_dropdown = html.Div([
 
 # 2. Fitness / Fatigue / Form — explainer + 30-day focused form view + full chart
 
-fitness_explainer = dcc.Markdown(
-    """
-**Fitness (CTL)** — 42-day rolling training load. Your long-term base.
-**Fatigue (ATL)** — 7-day rolling load. How loaded your body is right now.
-**Form (TSB) = Fitness − Fatigue.** Positive = fresh, negative = tired.
+# Single source of truth for the fitness explainer markdown — used here by the
+# Dash app and by build_static.py for the static HTML export.
+FITNESS_EXPLAINER_MD = (
+    "**Fitness (CTL)** — 42-day rolling training load. Your long-term base.\n"
+    "**Fatigue (ATL)** — 7-day rolling load. How loaded your body is right now.\n"
+    "**Form (TSB) = Fitness − Fatigue.** Positive = fresh, negative = tired.\n\n"
+    "Bands: above **+5** fresh / peaked &nbsp;·&nbsp; **+5 to −10** optimal training "
+    "zone &nbsp;·&nbsp; **−10 to −30** productive (building, accept the tired) "
+    "&nbsp;·&nbsp; below **−30** overreaching."
+)
 
-Bands: above **+5** fresh / peaked &nbsp;·&nbsp; **+5 to −10** optimal training zone &nbsp;·&nbsp;
-**−10 to −30** productive (building, accept the tired) &nbsp;·&nbsp; below **−30** overreaching.
-    """,
+fitness_explainer = dcc.Markdown(
+    FITNESS_EXPLAINER_MD,
     className="px-4 py-2 mb-2",
     style={"color": dark_text_color, "fontSize": "0.92rem", "lineHeight": "1.6"}
 )
