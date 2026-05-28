@@ -57,7 +57,9 @@ figs["pie-ytd"] = app._make_pie(app.pie_df("YTD"),
 # Other named figures
 figs["form-recent"] = app.form_recent_fig
 figs["yoy"] = app.yoy_fig
-figs["bubble"] = app.bubble_fig
+figs["year-heatmap"] = app.year_heatmap_fig
+figs["hr-zones"] = app.hr_zones_fig
+figs["duration-hist"] = app.duration_hist_fig
 figs["map"] = app.map_fig
 figs["scatter-pace"] = app.scatter_pace_fig
 figs["scatter-efficiency"] = app.scatter_efficiency_fig
@@ -164,10 +166,12 @@ kpi_html = "".join([
     kpi_card_html("Fitness (CTL)", f"{app.current_fitness:.0f}", "42-day load avg"),
     kpi_card_html("Form (TSB)", f"{app.current_form:+.0f}", app.form_label,
                   value_color=app.form_color),
+    kpi_card_html("Load Ratio", f"{app.acwr:.2f}", app.acwr_label,
+                  value_color=app.acwr_color),
     kpi_card_html(
         "This Week",
         f"{app.this_week_hours:.1f}h",
-        f"{app.week_sign}{app.week_delta:.1f}h vs 8-wk avg ({app.trailing_8wk_avg:.1f}h)",
+        f"{app.week_sign}{app.week_delta:.1f}h vs 8-wk avg",
         value_color=app.week_color,
     ),
     kpi_card_html("Current Streak", f"{app.current_streak} days",
@@ -296,6 +300,10 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
+<div class="row"><div class="col-md-12"><div id="year-heatmap"></div></div></div>
+
+<hr>
+
 <div class="row mt-4">
   <div class="col-md-6">
     <h4 class="text-center my-3">🏆 Overall Stats</h4>
@@ -356,6 +364,10 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
+<div class="row"><div class="col-md-12"><div id="hr-zones"></div></div></div>
+
+<hr>
+
 <div class="row">
   <div class="col-md-6"><div id="scatter-pace"></div></div>
   <div class="col-md-6"><div id="scatter-efficiency"></div></div>
@@ -363,7 +375,7 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<div class="row"><div class="col-md-12"><div id="bubble"></div></div></div>
+<div class="row"><div class="col-md-12"><div id="duration-hist"></div></div></div>
 
 <hr>
 

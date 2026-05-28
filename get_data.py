@@ -72,10 +72,13 @@ def main():
             existing_df = pd.DataFrame(columns=columns)
             print("📁 No existing CSV found. Starting from scratch.")
 
-    # Step 3: Fetch new activities
+    # Step 3: Fetch new activities. Track every ID Strava currently returns so
+    # we can detect deletions after the fetch completes.
     page = 1
     per_page = 200
     new_activities = []
+    seen_ids = set()
+    fetch_complete = False
 
     while True:
         response = requests.get(activities_url, headers=headers, params={
@@ -94,11 +97,13 @@ def main():
         page_data = response.json()
         if not page_data:
             print(f"✅ No more activities after page {page - 1}.")
+            fetch_complete = True
             break
 
         new_count = 0
         for act in page_data:
             act_id = str(act.get('id'))
+            seen_ids.add(act_id)
             if act_id in existing_ids:
                 continue
             row = {col: act.get(col, None) for col in columns}
@@ -111,10 +116,21 @@ def main():
         page += 1
 
         if len(page_data) < per_page:
+            fetch_complete = True
             break
 
-    # Step 4: Save results
-    if new_activities:
+    # Detect deletions: any ID in the CSV but not in Strava's response. Only
+    # trust this if the fetch finished cleanly — otherwise a partial response
+    # could falsely flag activities as deleted.
+    deleted_ids = set()
+    if fetch_complete and existing_ids:
+        deleted_ids = existing_ids - seen_ids
+        if deleted_ids:
+            print(f"🗑️  Detected {len(deleted_ids)} activities removed from Strava — dropping from CSV")
+            existing_df = existing_df[~existing_df['id'].astype(str).isin(deleted_ids)]
+
+    # Step 4: Save results if anything changed (additions or deletions)
+    if new_activities or deleted_ids:
         new_df = pd.DataFrame(new_activities)
         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
         # format='ISO8601' handles both pandas' default serialised form
@@ -124,9 +140,9 @@ def main():
         combined_df['start_date'] = pd.to_datetime(combined_df['start_date'], format='ISO8601')
         combined_df = combined_df.sort_values(by='start_date', ascending=False)
         combined_df.to_csv('activities.csv', index=False, encoding='utf-8')
-        print(f"\n✅ Added {len(new_df)} new activities. Total now: {len(combined_df)}")
+        print(f"\n✅ Added {len(new_activities)} · removed {len(deleted_ids)} · total now: {len(combined_df)}")
     else:
-        print("📭 No new activities found.")
+        print("📭 No new activities and no deletions detected.")
 
     print("📁 All activities saved to activities.csv")
 

@@ -291,6 +291,25 @@ for i in range(len(sorted_unique_dates) - 1, 0, -1):
 last_activity_date = df['date'].max()
 days_since_last = (today - last_activity_date).days
 
+# ACWR (Acute:Chronic Workload Ratio) = avg-daily-load over 7 days / 28 days.
+# Sports-science consensus: 0.8–1.3 = optimal, 1.3–1.5 = caution, >1.5 = high
+# injury risk, <0.8 = undertraining / detraining.
+_acute_7d = daily_scores[daily_scores['date'] > today - timedelta(days=7)]['training_load'].mean()
+_chronic_28d = daily_scores[daily_scores['date'] > today - timedelta(days=28)]['training_load'].mean()
+acwr = float(_acute_7d / _chronic_28d) if _chronic_28d > 0 else 0.0
+
+def acwr_status(ratio):
+    if ratio < 0.8:
+        return "Undertraining", "#60a5fa"
+    elif ratio <= 1.3:
+        return "Optimal", "#4ade80"
+    elif ratio <= 1.5:
+        return "Caution", "#facc15"
+    else:
+        return "High Risk", "#f87171"
+
+acwr_label, acwr_color = acwr_status(acwr)
+
 #######################
 # MONTHLY ACTIVITY
 #######################
@@ -495,10 +514,11 @@ def kpi_card(title, value, subtitle="", value_color=None):
 
 layout_kpi = dbc.Row([
     dbc.Col(kpi_card("Fitness (CTL)", f"{current_fitness:.0f}", "42-day load avg"), md=2),
-    dbc.Col(kpi_card("Form (TSB)", f"{current_form:+.0f}", form_label, value_color=form_color), md=3),
+    dbc.Col(kpi_card("Form (TSB)", f"{current_form:+.0f}", form_label, value_color=form_color), md=2),
+    dbc.Col(kpi_card("Load Ratio", f"{acwr:.2f}", acwr_label, value_color=acwr_color), md=2),
     dbc.Col(kpi_card("This Week", f"{this_week_hours:.1f}h",
-                     f"{week_sign}{week_delta:.1f}h vs 8-wk avg ({trailing_8wk_avg:.1f}h)",
-                     value_color=week_color), md=3),
+                     f"{week_sign}{week_delta:.1f}h vs 8-wk avg",
+                     value_color=week_color), md=2),
     dbc.Col(kpi_card("Current Streak", f"{current_streak} days",
                      f"ending {last_activity_date}"), md=2),
     dbc.Col(kpi_card("Last Activity", last_activity_date.strftime("%b %d"),
@@ -951,96 +971,148 @@ layout_scatter = dbc.Row([
     dbc.Col(dcc.Graph(figure=scatter_efficiency_fig), md=6),
 ])
 
-# 7. Bubble calendar — last 8 weeks
-most_recent_date = df['date'].max()
-recent_date = max(most_recent_date, today)
-days_since_monday = recent_date.weekday()
-most_recent_monday = recent_date - timedelta(days=days_since_monday)
-start_date = most_recent_monday - timedelta(weeks=8)
+# 7. Year activity heatmap — GitHub contribution-graph style, 53 weeks × 7 days,
+# colour-coded by training load. Replaces the 8-week bubble calendar.
+_year_end = today
+_year_start_aligned = _year_end - timedelta(days=365 - 1)
+_year_start_aligned -= timedelta(days=_year_start_aligned.weekday())  # back to Monday
 
-recent_df = df[df['date'] >= start_date].copy()
-recent_df['date_dt'] = pd.to_datetime(recent_df['date'])
-recent_df['week_number'] = ((recent_df['date_dt'] - pd.to_datetime(start_date)).dt.days // 7)
-recent_df['weekday'] = recent_df['start_date_local'].dt.weekday
+_daily_load_full = df.groupby('date')['training_load'].sum()
 
-daily_stats = recent_df.groupby(['date', 'week_number', 'weekday']).apply(
-    lambda x: pd.Series({
-        'duration_hr': x['duration_hr'].sum(),
-        'avg_hr': np.average(
-            x['average_heartrate'].fillna(0),
-            weights=x['duration_hr'],
-            axis=0
-        ) if x['average_heartrate'].notna().any() else 0,
-        'activity_types': ', '.join(x['type'].unique())
-    }),
-    include_groups=False
-).reset_index()
+_week_starts = []
+_year_z = [[] for _ in range(7)]  # 7 rows: Mon..Sun
+_year_dates = [[] for _ in range(7)]
+_cursor = _year_start_aligned
+while _cursor <= _year_end:
+    _week_starts.append(_cursor)
+    for _d in range(7):
+        _day = _cursor + timedelta(days=_d)
+        _load = float(_daily_load_full.get(_day, 0)) if _day <= _year_end else None
+        _year_z[_d].append(_load)
+        _year_dates[_d].append(_day.strftime('%a · %b %d, %Y') if _day <= _year_end else '')
+    _cursor += timedelta(days=7)
 
-bubble_date_range = pd.date_range(start=start_date, end=recent_date, freq='D')
-start_date_ts = pd.Timestamp(start_date)
-calendar_df = pd.DataFrame({
-    'date': bubble_date_range.date,
-    'week_number': [(d - start_date_ts).days // 7 for d in bubble_date_range],
-    'weekday': [d.weekday() for d in bubble_date_range]
-})
-calendar_df = calendar_df.merge(daily_stats, on=['date', 'week_number', 'weekday'], how='left')
-calendar_df['duration_hr'] = calendar_df['duration_hr'].fillna(0)
-calendar_df['avg_hr'] = calendar_df['avg_hr'].fillna(0)
-calendar_df['activity_types'] = calendar_df['activity_types'].fillna('')
-calendar_df['bubble_size'] = calendar_df['duration_hr'] * 60
+# Tick at the first week of each month
+_month_tick_idx = []
+_month_tick_text = []
+_seen_months = set()
+for i, ws in enumerate(_week_starts):
+    key = (ws.year, ws.month)
+    if key not in _seen_months:
+        _seen_months.add(key)
+        _month_tick_idx.append(i)
+        _month_tick_text.append(ws.strftime('%b'))
 
-min_hr = max(50, calendar_df[calendar_df['avg_hr'] > 0]['avg_hr'].min()) if (calendar_df['avg_hr'] > 0).any() else 60
-max_hr = min(200, calendar_df['avg_hr'].max()) if (calendar_df['avg_hr'] > 0).any() else 180
-midpoint_hr = (min_hr + max_hr) / 2
-
-bubble_fig = px.scatter(
-    calendar_df,
-    x='weekday', y='week_number',
-    size='bubble_size', color='avg_hr',
-    color_continuous_scale='RdYlBu_r',
-    title='📅 Workout Calendar · Last 8 Weeks',
-    labels={'weekday': 'Day of Week', 'week_number': 'Week',
-            'avg_hr': 'Avg HR (bpm)', 'duration_hr': 'Hours'},
-    size_max=55,
-    color_continuous_midpoint=midpoint_hr,
-    range_color=[min_hr, max_hr]
-)
-bubble_fig.update_traces(
-    marker=dict(line=dict(width=0.5, color=dark_paper_color)),
-    hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]} · %{customdata[2]} bpm<br>%{customdata[3]}<extra></extra>",
-    customdata=calendar_df.apply(lambda x: [
-        x['date'].strftime('%a · %b %d'),
-        f"{int(x['duration_hr'] * 60)}:{int((x['duration_hr'] * 60 % 1) * 60):02d}" if x['duration_hr'] > 0 else "—",
-        f"{int(x['avg_hr'])}" if x['avg_hr'] > 0 else "—",
-        x['activity_types'] if x['activity_types'] else "rest"
-    ], axis=1).tolist()
-)
-# Week labels: actual week-of dates rather than "Week 0"
-week_starts = [start_date + timedelta(weeks=w) for w in range(9)]
-week_tick_labels = [w.strftime("%b %d") for w in week_starts]
-
-bubble_fig.update_layout(
+year_heatmap_fig = go.Figure(data=go.Heatmap(
+    z=_year_z,
+    x=list(range(len(_week_starts))),
+    y=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    customdata=_year_dates,
+    colorscale=[
+        [0.00, "#1F2937"],     # no activity → dark grey
+        [0.0001, "#FED7AA"],   # any activity → light amber
+        [0.30, "#FB923C"],     # moderate → orange
+        [0.70, "#DC2626"],     # high → red
+        [1.00, "#7F1D1D"],     # peak → deep red
+    ],
+    hovertemplate="<b>%{customdata}</b><br>Load: %{z:.0f}<extra></extra>",
+    xgap=2, ygap=2,
+    colorbar=dict(title=dict(text="Load", font=dict(size=11)),
+                  thickness=12, len=0.8, outlinewidth=0,
+                  tickfont=dict(size=10)),
+))
+year_heatmap_fig.update_layout(
     template=dark_template,
-    height=420,
+    title_text="📅 Training Year · Past 365 Days",
+    height=240,
     xaxis=dict(
-        tickmode='array',
-        tickvals=[0, 1, 2, 3, 4, 5, 6],
-        ticktext=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        showgrid=False, title_text=None, zeroline=False,
+        tickmode='array', tickvals=_month_tick_idx, ticktext=_month_tick_text,
+        showgrid=False, title_text=None, zeroline=False, tickfont=dict(size=10),
     ),
-    yaxis=dict(
-        tickmode='array',
-        tickvals=list(range(0, 9)),
-        ticktext=week_tick_labels,
-        title_text=None, autorange='reversed',
-    ),
-    coloraxis_colorbar=dict(
-        title=dict(text="Avg HR", font=dict(size=11)),
-        thickness=12, len=0.8, outlinewidth=0,
-        tickformat="d", tickfont=dict(size=10),
-    ),
+    yaxis=dict(showgrid=False, title_text=None, autorange='reversed', tickfont=dict(size=10)),
 )
-layout_bubble = dbc.Row([dbc.Col(dcc.Graph(figure=bubble_fig), md=12)])
+layout_year_heatmap = dbc.Row([dbc.Col(dcc.Graph(figure=year_heatmap_fig), md=12)])
+
+# 7b. HR zone distribution — polarized training analysis. For each activity
+# with a recorded average HR, classify it into a single zone based on % of
+# heart-rate reserve. Weekly stacked bar over the past 12 weeks.
+_HRR = HR_MAX - HR_REST
+_zone_bounds = [
+    (1, HR_REST + 0.50 * _HRR, HR_REST + 0.60 * _HRR, "Z1 Recovery",     "#60A5FA"),
+    (2, HR_REST + 0.60 * _HRR, HR_REST + 0.70 * _HRR, "Z2 Aerobic",      "#10B981"),
+    (3, HR_REST + 0.70 * _HRR, HR_REST + 0.80 * _HRR, "Z3 Tempo",        "#F59E0B"),
+    (4, HR_REST + 0.80 * _HRR, HR_REST + 0.90 * _HRR, "Z4 Threshold",    "#EF4444"),
+    (5, HR_REST + 0.90 * _HRR, HR_MAX + 1,            "Z5 Anaerobic",    "#7C2D12"),
+]
+
+def _hr_to_zone(hr):
+    if pd.isna(hr):
+        return None
+    for z, lo, hi, _, _ in _zone_bounds:
+        if lo <= hr < hi:
+            return z
+    return 5 if hr >= _zone_bounds[-1][1] else 1
+
+df['hr_zone'] = df['average_heartrate'].apply(_hr_to_zone)
+
+_hr_recent = df[(df['date'] >= today - timedelta(weeks=12)) & df['hr_zone'].notna()]
+_hr_weekly = (
+    _hr_recent.groupby(['week_start', 'hr_zone'])['duration_hr'].sum()
+    .unstack(fill_value=0)
+)
+
+hr_zones_fig = go.Figure()
+for z, _, _, name, color in _zone_bounds:
+    if z in _hr_weekly.columns:
+        hr_zones_fig.add_trace(go.Bar(
+            x=_hr_weekly.index, y=_hr_weekly[z].round(2),
+            name=name, marker_color=color,
+            hovertemplate=f"<b>{name}</b>: %{{y:.2f}}h<br>%{{x|%b %d}}<extra></extra>",
+        ))
+
+# Polarized footnote — % of HR-tracked time at low (Z1-Z2) vs high (Z4-Z5)
+_zone_totals = _hr_recent.groupby('hr_zone')['duration_hr'].sum()
+_total_hrs = _zone_totals.sum()
+_easy_pct = (_zone_totals.reindex([1, 2], fill_value=0).sum() / _total_hrs * 100) if _total_hrs else 0
+_hard_pct = (_zone_totals.reindex([4, 5], fill_value=0).sum() / _total_hrs * 100) if _total_hrs else 0
+
+hr_zones_fig.update_layout(
+    template=dark_template,
+    title_text=f"❤️ HR Zone Distribution · Last 12 Weeks &nbsp;<span style='font-size:0.7em;color:{muted_text_color}'>· Easy {_easy_pct:.0f}% · Hard {_hard_pct:.0f}%</span>",
+    barmode='stack',
+    height=340,
+    xaxis=dict(title_text=None, showgrid=False),
+    yaxis=dict(title_text="Hours", rangemode="tozero"),
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+)
+layout_hr_zones = dbc.Row([dbc.Col(dcc.Graph(figure=hr_zones_fig), md=12)])
+
+# 7c. Activity duration histogram — distribution of session lengths.
+duration_hist_fig = go.Figure()
+_durations = df.loc[df['duration_hr'] > 0, 'duration_hr']
+duration_hist_fig.add_trace(go.Histogram(
+    x=_durations, nbinsx=40,
+    marker=dict(color=SERIES["rolling_7"], line=dict(width=0)),
+    opacity=0.85,
+    hovertemplate="%{x:.2f}h: %{y} sessions<extra></extra>",
+))
+_median_duration = float(_durations.median()) if len(_durations) else 0
+duration_hist_fig.add_vline(
+    x=_median_duration,
+    line=dict(color=SERIES["fitness"], width=2, dash="dash"),
+    annotation_text=f"median {_median_duration:.2f}h",
+    annotation_position="top right",
+    annotation_font=dict(color=dark_text_color, size=11),
+)
+duration_hist_fig.update_layout(
+    template=dark_template,
+    title_text="⏱️ Activity Duration Distribution",
+    height=300,
+    xaxis=dict(title_text="Hours per session", showgrid=False),
+    yaxis=dict(title_text="Count", showgrid=True),
+    showlegend=False, bargap=0.04,
+)
+layout_duration_hist = dbc.Row([dbc.Col(dcc.Graph(figure=duration_hist_fig), md=12)])
 
 # 8. Bonus stats tables
 recent_activities = df.sort_values("start_date_local", ascending=False).head(5)
@@ -1649,6 +1721,8 @@ app.layout = dbc.Container([
     html.Hr(),
     layout_pie,
     html.Hr(),
+    layout_year_heatmap,
+    html.Hr(),
     layout_bonus,
     layout_yoy,
     html.Hr(),
@@ -1663,9 +1737,11 @@ app.layout = dbc.Container([
     html.Hr(),
     layout_heatmap_cumulative,
     html.Hr(),
+    layout_hr_zones,
+    html.Hr(),
     layout_scatter,
     html.Hr(),
-    layout_bubble,
+    layout_duration_hist,
     html.Hr(),
     layout_map,
     html.Hr(),
