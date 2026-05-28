@@ -311,60 +311,21 @@ def acwr_status(ratio):
 acwr_label, acwr_color = acwr_status(acwr)
 
 #######################
-# WEEKLY & ANNUAL SUMMARY (incl. kJ + elevation)
+# WEEKLY STREAK (consecutive weeks with at least one activity)
 #######################
 
-def _period_stats(start, end):
-    """Sum hours, sessions, distance (km), elevation (m), TRIMP and kJ in [start, end)."""
-    sub = df[(df['date'] >= start) & (df['date'] < end)]
-    return {
-        'hours': float(sub['duration_hr'].sum()),
-        'sessions': int(len(sub)),
-        'distance_km': float(sub['distance'].sum()) / 1000,
-        'elevation_m': float(sub['total_elevation_gain'].sum()),
-        'trimp': float(sub['training_load'].sum()),
-        'kilojoules': float(sub['kilojoules'].sum(skipna=True)) if 'kilojoules' in sub.columns else 0.0,
-    }
-
-# This week (Mon..today inclusive)
-ws_this = _period_stats(this_week_start, today + timedelta(days=1))
-# Last completed week (prior Mon-Sun)
-ws_last = _period_stats(this_week_start - timedelta(days=7), this_week_start)
-# Average per week over the prior 8 completed weeks
-_eight_start = this_week_start - timedelta(days=56)
-_eight_total = _period_stats(_eight_start, this_week_start)
-ws_avg = {k: v / 8 for k, v in _eight_total.items()}
-
-# Year-so-far totals
-ytd_stats = _period_stats(datetime(latest_year, 1, 1).date(), today + timedelta(days=1))
-
-# Monthly mini-stats — last 6 calendar months including current
-_month_rows = []
-_y, _m = today.year, today.month
-for _i in range(6):
-    _start = datetime(_y, _m, 1).date()
-    _next_y = _y + (1 if _m == 12 else 0)
-    _next_m = 1 if _m == 12 else _m + 1
-    _end = datetime(_next_y, _next_m, 1).date()
-    _sub = df[(df['date'] >= _start) & (df['date'] < _end)]
-    _hours = float(_sub['duration_hr'].sum())
-    _sessions = int(len(_sub))
-    _biggest_day = float(_sub.groupby('date')['duration_hr'].sum().max()) if not _sub.empty else 0.0
-    _biggest_week = float(_sub.groupby('week_start')['duration_hr'].sum().max()) if not _sub.empty else 0.0
-    _month_rows.append({
-        'Month': _start.strftime('%b %Y'),
-        'Hours': f"{_hours:.1f}h",
-        'Sessions': str(_sessions),
-        'Biggest Day': f"{_biggest_day:.1f}h" if _biggest_day else "—",
-        'Biggest Week': f"{_biggest_week:.1f}h" if _biggest_week else "—",
-    })
-    # Step one calendar month back
-    if _m == 1:
-        _m = 12
-        _y -= 1
-    else:
-        _m -= 1
-monthly_stats_df = pd.DataFrame(_month_rows)
+_active_weeks = {ws.date() for ws in df['week_start'].dropna().unique()}
+_most_recent_active_week = last_activity_date - timedelta(days=last_activity_date.weekday())
+week_streak = 0
+_check = _most_recent_active_week
+while _check in _active_weeks:
+    week_streak += 1
+    _check -= timedelta(days=7)
+_streak_start_week = _most_recent_active_week - timedelta(days=7 * (week_streak - 1)) if week_streak else None
+week_streak_activities = (
+    int((df['week_start'].dt.date >= _streak_start_week).sum())
+    if _streak_start_week else 0
+)
 
 #######################
 # MONTHLY ACTIVITY
@@ -383,18 +344,6 @@ heatmap_pivot = (
     .unstack(fill_value=0)
     .reindex(index=range(7), columns=range(24), fill_value=0)
 )
-
-#######################
-# ROLLING VOLUME (hours per week)
-#######################
-
-daily_hours_series = (
-    df.groupby('date')['duration_hr'].sum()
-    .reindex(date_range.date, fill_value=0)
-)
-rolling_7d = daily_hours_series.rolling(7, min_periods=1).sum()
-rolling_28d = daily_hours_series.rolling(28, min_periods=1).sum() / 4
-rolling_365d = daily_hours_series.rolling(365, min_periods=1).sum() / (365 / 7)
 
 #######################
 # RUN PERFORMANCE
@@ -453,23 +402,6 @@ longest_streak_idx = streak_lengths.idxmax()
 streak_dates = unique_dates[streak_groups == longest_streak_idx]
 streak_start = streak_dates.min()
 streak_end = streak_dates.max()
-
-# Streak history — top 10 streaks (longest first) for the bar chart
-_streak_top = streak_lengths.sort_values(ascending=False).head(10).reset_index(drop=True)
-streak_history_fig = go.Figure(go.Bar(
-    x=[f"#{i + 1}" for i in range(len(_streak_top))],
-    y=_streak_top.values,
-    marker=dict(color=SERIES["fresh"], line=dict(width=0)),
-    hovertemplate="<b>#%{x}</b>: %{y} days<extra></extra>",
-))
-streak_history_fig.update_layout(
-    template=dark_template,
-    title_text="💪 Longest Streaks · Top 10",
-    height=280,
-    xaxis=dict(title_text=None, showgrid=False),
-    yaxis=dict(title_text="Days", rangemode="tozero"),
-    showlegend=False, bargap=0.1,
-)
 
 total_days = (df['date'].max() - df['date'].min()).days + 1
 active_days = df['date'].nunique()
@@ -592,8 +524,8 @@ layout_kpi = dbc.Row([
     dbc.Col(kpi_card("This Week", f"{this_week_hours:.1f}h",
                      f"{week_sign}{week_delta:.1f}h vs 8-wk avg",
                      value_color=week_color), md=2),
-    dbc.Col(kpi_card("Current Streak", f"{current_streak} days",
-                     f"ending {last_activity_date}"), md=2),
+    dbc.Col(kpi_card("Weekly Streak", f"{week_streak} weeks",
+                     f"{week_streak_activities} activities"), md=2),
     dbc.Col(kpi_card("Last Activity", last_activity_date.strftime("%b %d"),
                      f"{days_since_last} day{'s' if days_since_last != 1 else ''} ago"
                      if days_since_last > 0 else "today"), md=2),
@@ -707,40 +639,88 @@ zone_specs = [
     (-200, -30, "Overreaching", SERIES["overreach"]),
 ]
 
-form_recent_fig = go.Figure()
+form_y_min = int(min(form_recent['form'].min(), -35)) - 5
+form_y_max = int(max(form_recent['form'].max(), 12)) + 5
 
+# Combined Form + Load Ratio chart: Form (TSB) on the primary y-axis with
+# its zone shading; Load Ratio (ACWR) overlaid on a secondary y-axis on the
+# right so both metrics share a single x-axis and today-marker context.
+daily_scores['acwr'] = (
+    daily_scores['training_load'].rolling(7, min_periods=1).mean()
+    / daily_scores['training_load'].rolling(28, min_periods=1).mean().replace(0, np.nan)
+)
+acwr_recent = daily_scores[daily_scores['date'] >= form_recent_start].copy()
+
+_acwr_min_visible = min(0.5, float(acwr_recent['acwr'].min()) - 0.1
+                        if acwr_recent['acwr'].notna().any() else 0.5)
+_acwr_max_visible = max(1.7, float(acwr_recent['acwr'].max()) + 0.1
+                        if acwr_recent['acwr'].notna().any() else 1.7)
+
+combined_form_acwr_fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+# Form zone shading (primary y-axis only)
 for y0, y1, _, hex_color in zone_specs:
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    form_recent_fig.add_hrect(
+    combined_form_acwr_fig.add_hrect(
         y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.10)",
         line_width=0, layer="below"
     )
 
-form_recent_fig.add_trace(go.Scatter(
-    x=form_recent['date'], y=form_recent['form'].round(1),
-    mode="lines",
-    line=dict(color=SERIES["fitness"], width=2.5, shape="spline", smoothing=0.4),
-    hovertemplate="<b>%{x|%b %d}</b><br>Form: %{y:+.1f}<extra></extra>",
-    name="Form (TSB)",
-    showlegend=False
-))
+# Form line + marker (left axis)
+combined_form_acwr_fig.add_trace(
+    go.Scatter(
+        x=form_recent['date'], y=form_recent['form'].round(1),
+        mode="lines",
+        line=dict(color=SERIES["fitness"], width=2.5, shape="spline", smoothing=0.4),
+        hovertemplate="Form: %{y:+.1f}<extra></extra>",
+        name="Form (TSB)",
+    ),
+    secondary_y=False,
+)
+combined_form_acwr_fig.add_trace(
+    go.Scatter(
+        x=[form_recent['date'].iloc[-1]],
+        y=[round(form_recent['form'].iloc[-1], 1)],
+        mode="markers",
+        marker=dict(color=form_color, size=14, line=dict(color=dark_paper_color, width=2)),
+        hovertemplate=f"Today's Form: {current_form:+.1f} · {form_label}<extra></extra>",
+        showlegend=False,
+    ),
+    secondary_y=False,
+)
 
-# Highlight today's value
-form_recent_fig.add_trace(go.Scatter(
-    x=[form_recent['date'].iloc[-1]],
-    y=[round(form_recent['form'].iloc[-1], 1)],
-    mode="markers",
-    marker=dict(color=form_color, size=14,
-                line=dict(color=dark_paper_color, width=2)),
-    hovertemplate=f"<b>Today</b>: {current_form:+.1f}<br>{form_label}<extra></extra>",
-    showlegend=False
-))
+# Load Ratio line + marker (right axis)
+combined_form_acwr_fig.add_trace(
+    go.Scatter(
+        x=acwr_recent['date'], y=acwr_recent['acwr'].round(2),
+        mode="lines",
+        line=dict(color=SERIES["fatigue"], width=2, dash="dot"),
+        hovertemplate="Load Ratio: %{y:.2f}<extra></extra>",
+        name="Load Ratio (ACWR)",
+    ),
+    secondary_y=True,
+)
+combined_form_acwr_fig.add_trace(
+    go.Scatter(
+        x=[acwr_recent['date'].iloc[-1]],
+        y=[round(acwr_recent['acwr'].iloc[-1], 2)
+           if pd.notna(acwr_recent['acwr'].iloc[-1]) else None],
+        mode="markers",
+        marker=dict(color=acwr_color, size=12, line=dict(color=dark_paper_color, width=2)),
+        hovertemplate=f"Today's Load: {acwr:.2f} · {acwr_label}<extra></extra>",
+        showlegend=False,
+    ),
+    secondary_y=True,
+)
 
-form_recent_fig.add_hline(y=0, line=dict(color=SERIES["form_zero"], width=1, dash="dash"))
+# Zero line for Form on the left axis
+combined_form_acwr_fig.add_hline(
+    y=0, line=dict(color=SERIES["form_zero"], width=1, dash="dash"),
+    secondary_y=False,
+)
 
-form_y_min = int(min(form_recent['form'].min(), -35)) - 5
-form_y_max = int(max(form_recent['form'].max(), 12)) + 5
+# Zone labels on the right edge (Form-only, since right axis carries load ratio)
 zone_label_positions = [
     (max(form_y_max - 4, 8), "Fresh", SERIES["fresh"]),
     (-2.5, "Optimal", SERIES["optimal"]),
@@ -749,104 +729,38 @@ zone_label_positions = [
 ]
 for y, label, color in zone_label_positions:
     if form_y_min <= y <= form_y_max:
-        form_recent_fig.add_annotation(
-            xref="paper", x=1.0, y=y,
-            xanchor="left", yanchor="middle",
+        combined_form_acwr_fig.add_annotation(
+            xref="paper", yref="y",
+            x=-0.005, y=y, xanchor="right", yanchor="middle",
             text=label, showarrow=False,
             font=dict(color=color, size=10, family=chart_font_family, weight=500),
-            xshift=8
+            xshift=-2,
         )
 
-form_recent_fig.update_layout(
+combined_form_acwr_fig.update_layout(
     template=dark_template,
-    title_text=f"🎯 Form · Last 30 Days &nbsp;&nbsp;<span style='color:{form_color}; font-weight:600'>{current_form:+.0f} · {form_label}</span>",
+    title_text=(
+        f"🎯 Form & Load Ratio · Last 30 Days &nbsp;&nbsp;"
+        f"<span style='color:{form_color}; font-weight:600'>Form {current_form:+.0f} · {form_label}</span>"
+        f"&nbsp;&nbsp;<span style='color:{acwr_color}; font-weight:600'>Load {acwr:.2f} · {acwr_label}</span>"
+    ),
     xaxis=dict(title_text=None, tickformat="%b %d"),
-    yaxis=dict(title_text="Form (TSB)", range=[form_y_min, form_y_max], tickformat=".0f"),
-    margin=dict(l=20, r=85, t=60, b=20),
-    height=320,
-    showlegend=False,
+    height=380,
+    hovermode="x unified",
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    margin=dict(l=70, r=20, t=70, b=20),
+)
+combined_form_acwr_fig.update_yaxes(
+    title_text="Form (TSB)", secondary_y=False,
+    range=[form_y_min, form_y_max], tickformat=".0f",
+)
+combined_form_acwr_fig.update_yaxes(
+    title_text="Load Ratio (ACWR)", secondary_y=True,
+    range=[_acwr_min_visible, _acwr_max_visible], tickformat=".1f",
+    showgrid=False,
 )
 
-# Last-30-day Load-Ratio (ACWR) chart with zone shading — mirrors the form chart.
-daily_scores['acwr'] = (
-    daily_scores['training_load'].rolling(7, min_periods=1).mean()
-    / daily_scores['training_load'].rolling(28, min_periods=1).mean().replace(0, np.nan)
-)
-acwr_recent = daily_scores[daily_scores['date'] >= form_recent_start].copy()
-
-acwr_zone_specs = [
-    (0.0, 0.8, "Undertraining", SERIES["optimal"]),
-    (0.8, 1.3, "Optimal", SERIES["fresh"]),
-    (1.3, 1.5, "Caution", SERIES["productive"]),
-    (1.5, 3.0, "High Risk", SERIES["overreach"]),
-]
-
-acwr_recent_fig = go.Figure()
-for y0, y1, _, hex_color in acwr_zone_specs:
-    h = hex_color.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    acwr_recent_fig.add_hrect(
-        y0=y0, y1=y1, fillcolor=f"rgba({r},{g},{b},0.10)",
-        line_width=0, layer="below"
-    )
-
-acwr_recent_fig.add_trace(go.Scatter(
-    x=acwr_recent['date'], y=acwr_recent['acwr'].round(2),
-    mode="lines",
-    line=dict(color=SERIES["fitness"], width=2.5, shape="spline", smoothing=0.4),
-    hovertemplate="<b>%{x|%b %d}</b><br>Load Ratio: %{y:.2f}<extra></extra>",
-    name="Load Ratio (ACWR)",
-    showlegend=False
-))
-
-acwr_recent_fig.add_trace(go.Scatter(
-    x=[acwr_recent['date'].iloc[-1]],
-    y=[round(acwr_recent['acwr'].iloc[-1], 2) if pd.notna(acwr_recent['acwr'].iloc[-1]) else None],
-    mode="markers",
-    marker=dict(color=acwr_color, size=14,
-                line=dict(color=dark_paper_color, width=2)),
-    hovertemplate=f"<b>Today</b>: {acwr:.2f}<br>{acwr_label}<extra></extra>",
-    showlegend=False
-))
-
-acwr_recent_fig.add_hline(y=1.0, line=dict(color=SERIES["form_zero"], width=1, dash="dash"))
-
-# Y-axis range that always shows the zone bands prominently
-_acwr_min_visible = min(0.5, float(acwr_recent['acwr'].min()) - 0.1 if acwr_recent['acwr'].notna().any() else 0.5)
-_acwr_max_visible = max(1.7, float(acwr_recent['acwr'].max()) + 0.1 if acwr_recent['acwr'].notna().any() else 1.7)
-
-acwr_label_positions = [
-    (max(_acwr_max_visible - 0.05, 1.65), "High Risk", SERIES["overreach"]),
-    (1.4, "Caution", SERIES["productive"]),
-    (1.05, "Optimal", SERIES["fresh"]),
-    (min(_acwr_min_visible + 0.05, 0.65), "Undertraining", SERIES["optimal"]),
-]
-for y, label, color in acwr_label_positions:
-    if _acwr_min_visible <= y <= _acwr_max_visible:
-        acwr_recent_fig.add_annotation(
-            xref="paper", x=1.0, y=y,
-            xanchor="left", yanchor="middle",
-            text=label, showarrow=False,
-            font=dict(color=color, size=10, family=chart_font_family, weight=500),
-            xshift=8
-        )
-
-acwr_recent_fig.update_layout(
-    template=dark_template,
-    title_text=f"⚖️ Load Ratio · Last 30 Days &nbsp;&nbsp;<span style='color:{acwr_color}; font-weight:600'>{acwr:.2f} · {acwr_label}</span>",
-    xaxis=dict(title_text=None, tickformat="%b %d"),
-    yaxis=dict(title_text="ACWR", range=[_acwr_min_visible, _acwr_max_visible],
-               tickformat=".1f"),
-    margin=dict(l=20, r=110, t=60, b=20),
-    height=320,
-    showlegend=False,
-)
-
-# Side-by-side Form + Load Ratio
-layout_form_recent = dbc.Row([
-    dbc.Col(dcc.Graph(figure=form_recent_fig), md=6),
-    dbc.Col(dcc.Graph(figure=acwr_recent_fig), md=6),
-])
+layout_form_recent = dbc.Row([dbc.Col(dcc.Graph(figure=combined_form_acwr_fig), md=12)])
 
 # 2b. Full Fitness Chart (CTL / ATL / TSB + monthly bars) — global-filter aware
 
@@ -866,9 +780,11 @@ def build_fitness_fig(start_date):
             go.Bar(
                 x=activity_data['month'], y=activity_data['duration_hr'],
                 name=activity_type,
-                marker=dict(color=color_map.get(activity_type, '#666666'),
-                            line=dict(width=0)),
-                opacity=0.85,
+                marker=dict(
+                    color=color_map.get(activity_type, '#666666'),
+                    line=dict(width=1, color=dark_paper_color),
+                ),
+                opacity=0.9,
                 hovertemplate=f"<b>{activity_type}</b>: %{{y:.1f}}h<br>%{{x|%b %Y}}<extra></extra>",
                 showlegend=False,
             ),
@@ -876,12 +792,12 @@ def build_fitness_fig(start_date):
         )
 
     fig.add_trace(go.Scatter(
-        x=ds['date'], y=ds['fitness'], name="Fitness (CTL · 42d)",
+        x=ds['date'], y=ds['fitness'].round(1), name="Fitness (CTL · 42d)",
         line=dict(color=SERIES["fitness"], width=2.5),
         hovertemplate="Fitness: %{y:.0f}<extra></extra>",
     ), secondary_y=True)
     fig.add_trace(go.Scatter(
-        x=ds['date'], y=ds['fatigue'], name="Fatigue (ATL · 7d)",
+        x=ds['date'], y=ds['fatigue'].round(1), name="Fatigue (ATL · 7d)",
         line=dict(color=SERIES["fatigue"], width=1.8, dash="dot"),
         hovertemplate="Fatigue: %{y:.0f}<extra></extra>",
     ), secondary_y=True)
@@ -890,62 +806,23 @@ def build_fitness_fig(start_date):
         template=dark_template,
         title_text="💪 Fitness · Fatigue · Monthly Volume",
         barmode='stack',
+        bargap=0.15,
         hovermode="x unified",
         showlegend=True,
-        margin=dict(l=20, r=20, t=70, b=20),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        margin=dict(l=70, r=70, t=70, b=20),
         height=440,
     )
-    fig.update_yaxes(title_text="Hours", secondary_y=False, rangemode="tozero")
-    fig.update_yaxes(title_text="Score", secondary_y=True, showgrid=False)
-    fig.update_xaxes(title_text=None)
+    fig.update_xaxes(title_text=None, showgrid=False)
+    fig.update_yaxes(title_text="Hours", secondary_y=False, rangemode="tozero",
+                     tickformat=".0f")
+    fig.update_yaxes(title_text="Score", secondary_y=True, showgrid=False,
+                     tickformat=".0f")
     return fig
 
 layout_fitness = dbc.Row([dbc.Col(dcc.Graph(id='fitness-graph', figure=build_fitness_fig(INITIAL_FILTER_START)), md=12)])
 
 # 3. Rolling Volume Chart — global-filter aware
-
-def build_rolling_fig(start_date):
-    idx = pd.Index(daily_hours_series.index)
-    if start_date:
-        mask = idx >= start_date
-        x = idx[mask]
-        y7 = rolling_7d.values[mask]
-        y28 = rolling_28d.values[mask]
-        y365 = rolling_365d.values[mask]
-    else:
-        x = idx
-        y7 = rolling_7d.values
-        y28 = rolling_28d.values
-        y365 = rolling_365d.values
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=list(x), y=y365, name="Year (365d avg)",
-        line=dict(color=SERIES["rolling_365"], width=2.5),
-        hovertemplate="<b>Year</b>: %{y:.1f} h/wk<extra></extra>",
-    ))
-    fig.add_trace(go.Scatter(
-        x=list(x), y=y28, name="Month (28d avg)",
-        line=dict(color=SERIES["rolling_28"], width=2),
-        hovertemplate="<b>Month</b>: %{y:.1f} h/wk<extra></extra>",
-    ))
-    fig.add_trace(go.Scatter(
-        x=list(x), y=y7, name="Week (7d)",
-        line=dict(color=SERIES["rolling_7"], width=1.6),
-        hovertemplate="<b>Week</b>: %{y:.1f} h/wk<extra></extra>",
-    ))
-    fig.update_layout(
-        template=dark_template,
-        title_text="⏳ Rolling Training Volume (h/week)",
-        hovermode="x unified",
-        showlegend=True,
-        height=360,
-    )
-    fig.update_xaxes(title_text=None)
-    fig.update_yaxes(title_text="Hours / week", rangemode="tozero")
-    return fig
-
-layout_rolling = dbc.Row([dbc.Col(dcc.Graph(id='rolling-graph', figure=build_rolling_fig(INITIAL_FILTER_START)), md=12)])
 
 # 4. Day-of-Week × Hour Heatmap — global-filter aware
 
@@ -1034,10 +911,28 @@ def build_cumulative_time_fig(start_date):
     fig.update_traces(
         hovertemplate="<b>%{fullData.name}</b>: %{y:.2f}h<br>%{x|%b %d, %Y}<extra></extra>",
         line=dict(width=0),
+        opacity=0.9,
     )
-    fig.update_layout(template=dark_template, showlegend=False, height=380)
-    fig.update_xaxes(title_text=None)
-    fig.update_yaxes(title_text=None)
+    # Annotate the total at the right edge so the headline number is visible
+    _final_total = float(pivot[pivot.columns[1:]].iloc[-1].sum())
+    fig.add_annotation(
+        x=pivot['date'].iloc[-1], y=_final_total,
+        text=f"<b>{_final_total:.0f}h</b>",
+        showarrow=False, xanchor="right", yanchor="bottom",
+        font=dict(color=dark_text_color, size=12, family=chart_font_family),
+        bgcolor=dark_paper_color, bordercolor=dark_grid_color, borderwidth=1, borderpad=4,
+    )
+    fig.update_layout(
+        template=dark_template,
+        showlegend=True,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1,
+                    font=dict(size=10)),
+        height=380,
+        hovermode="x unified",
+        margin=dict(l=50, r=20, t=70, b=20),
+    )
+    fig.update_xaxes(title_text=None, showgrid=False)
+    fig.update_yaxes(title_text="Hours", rangemode="tozero", tickformat=".0f")
     return fig
 
 # Heatmap + cumulative time side-by-side
@@ -1191,8 +1086,8 @@ year_heatmap_fig.update_layout(
 layout_year_heatmap = dbc.Row([dbc.Col(dcc.Graph(figure=year_heatmap_fig), md=12)])
 
 
-# 8. Bonus stats tables — beefier activity feed: 10 rows, Strava-style detail
-recent_activities = df.sort_values("start_date_local", ascending=False).head(10)
+# 8. Bonus stats tables — activity feed: 5 rows, Strava-style detail
+recent_activities = df.sort_values("start_date_local", ascending=False).head(5)
 activity_emoji = {
     'Run': '🏃', 'Ride': '🚴', 'Racquet Sports': '🏓', 'Cardio': '💪',
     'Weight Training': '🏋️', 'Hike': '🥾', 'Workout': '🤸', 'Walk': '🚶'
@@ -1276,82 +1171,6 @@ layout_yoy = dbc.Row([
     ], md=6),
     dbc.Col([], md=3),
 ], className="mt-4")
-
-# --- Weekly summary row ---
-
-def _summary_stat(label, value, sub=""):
-    return dbc.Card(
-        dbc.CardBody([
-            html.Div(label, className="text-uppercase",
-                     style={"color": muted_text_color, "fontSize": "0.7rem",
-                            "letterSpacing": "0.06em", "fontWeight": 500}),
-            html.Div(value, className="fw-bold mt-1",
-                     style={"fontSize": "1.25rem", "lineHeight": 1.1, "color": dark_text_color}),
-            html.Div(sub, style={"color": muted_text_color, "fontSize": "0.72rem",
-                                  "marginTop": "0.2rem"}),
-        ], className="py-2 text-center"),
-        style={"backgroundColor": dark_paper_color,
-               "border": f"1px solid {dark_grid_color}",
-               "borderRadius": "10px"},
-        className="h-100",
-    )
-
-def _delta_sub(now, ref, unit, fmt="{:.1f}"):
-    """e.g. '+0.8 vs avg' (green) or '−1.2 vs avg' (red); '—' if ref is 0."""
-    if ref <= 0:
-        return ""
-    diff = now - ref
-    sign = "+" if diff >= 0 else "−"
-    return f"{sign}{abs(diff):.1f}{unit} vs avg"
-
-layout_weekly_summary = html.Div([
-    html.H4("📆 This Week", className="text-center my-3"),
-    dbc.Row([
-        dbc.Col(_summary_stat("Hours", f"{ws_this['hours']:.1f}h",
-                              _delta_sub(ws_this['hours'], ws_avg['hours'], 'h')), md=2),
-        dbc.Col(_summary_stat("Sessions", f"{ws_this['sessions']}",
-                              _delta_sub(ws_this['sessions'], ws_avg['sessions'], '')), md=2),
-        dbc.Col(_summary_stat("Distance", f"{ws_this['distance_km']:.1f} km",
-                              _delta_sub(ws_this['distance_km'], ws_avg['distance_km'], 'km')), md=2),
-        dbc.Col(_summary_stat("Elevation", f"{int(ws_this['elevation_m'])} m",
-                              _delta_sub(ws_this['elevation_m'], ws_avg['elevation_m'], 'm', fmt="{:.0f}")), md=2),
-        dbc.Col(_summary_stat("TRIMP Load", f"{int(ws_this['trimp'])}",
-                              _delta_sub(ws_this['trimp'], ws_avg['trimp'], '', fmt="{:.0f}")), md=2),
-        dbc.Col(_summary_stat("kJ Burned", f"{int(ws_this['kilojoules']):,}".replace(',', ' '),
-                              _delta_sub(ws_this['kilojoules'], ws_avg['kilojoules'], '', fmt="{:.0f}")), md=2),
-    ], className="g-3 mb-2"),
-])
-
-layout_annual_summary = html.Div([
-    html.H4(f"🗓️ {latest_year} So Far", className="text-center my-3"),
-    dbc.Row([
-        dbc.Col(_summary_stat("Hours", f"{ytd_stats['hours']:.0f}h"), md=2),
-        dbc.Col(_summary_stat("Sessions", f"{ytd_stats['sessions']}"), md=2),
-        dbc.Col(_summary_stat("Distance", f"{ytd_stats['distance_km']:.0f} km"), md=2),
-        dbc.Col(_summary_stat("Elevation", f"{int(ytd_stats['elevation_m']):,} m".replace(',', ' ')), md=2),
-        dbc.Col(_summary_stat("TRIMP Load", f"{int(ytd_stats['trimp']):,}".replace(',', ' ')), md=2),
-        dbc.Col(_summary_stat("kJ Burned", f"{int(ytd_stats['kilojoules']):,}".replace(',', ' ')), md=2),
-    ], className="g-3 mb-2"),
-])
-
-# --- Monthly mini-stats table ---
-layout_monthly_stats = dbc.Row([
-    dbc.Col([
-        html.H4("📈 Last 6 Months", className="text-center my-3"),
-        dash_table.DataTable(
-            data=monthly_stats_df.to_dict("records"),
-            columns=[{"name": c, "id": c} for c in monthly_stats_df.columns],
-            style_table={"width": "100%", "margin": "0 auto"},
-            style_cell=table_cell_style,
-            style_header=table_header_style,
-        )
-    ], md=12),
-], className="mt-2")
-
-# --- Streak history mini-chart ---
-layout_streak_history = dbc.Row([
-    dbc.Col(dcc.Graph(figure=streak_history_fig), md=12),
-])
 
 # 9. Personal Records grid
 
@@ -1880,18 +1699,12 @@ app.layout = dbc.Container([
     layout_kpi,
     layout_insights,
     html.Hr(),
-    layout_weekly_summary,
-    layout_annual_summary,
-    html.Hr(),
     layout_pie,
     html.Hr(),
     layout_year_heatmap,
     html.Hr(),
     layout_bonus,
-    layout_monthly_stats,
     layout_yoy,
-    html.Hr(),
-    layout_streak_history,
     html.Hr(),
     layout_yoy_trajectory,
     html.Hr(),
@@ -1899,8 +1712,6 @@ app.layout = dbc.Container([
     layout_form_recent,
     filter_dropdown,
     layout_fitness,
-    html.Hr(),
-    layout_rolling,
     html.Hr(),
     layout_heatmap_cumulative,
     html.Hr(),
@@ -1913,7 +1724,6 @@ app.layout = dbc.Container([
 
 @app.callback(
     Output('fitness-graph', 'figure'),
-    Output('rolling-graph', 'figure'),
     Output('heatmap-graph', 'figure'),
     Output('cumulative-time-graph', 'figure'),
     Input('global-filter', 'value'),
@@ -1922,7 +1732,6 @@ def _update_filtered_charts(filter_value):
     start = _filter_start_from_value(filter_value)
     return (
         build_fitness_fig(start),
-        build_rolling_fig(start),
         build_heatmap_fig(start),
         build_cumulative_time_fig(start),
     )
