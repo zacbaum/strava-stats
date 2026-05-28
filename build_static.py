@@ -56,7 +56,8 @@ figs["pie-ytd"] = app._make_pie(app.pie_df("YTD"),
 # Other named figures
 figs["combined-form-acwr"] = app.combined_form_acwr_fig
 figs["yoy"] = app.yoy_fig
-figs["year-heatmap"] = app.year_heatmap_fig
+figs["year-heatmap-load"] = app.year_heatmap_load_fig
+figs["year-heatmap-activities"] = app.year_heatmap_activities_fig
 figs["map"] = app.map_fig
 figs["scatter-pace"] = app.scatter_pace_fig
 figs["scatter-efficiency"] = app.scatter_efficiency_fig
@@ -180,16 +181,6 @@ kpi_html = "".join([
 # Insights
 insights_html = "".join(insight_card_html(icon, text) for icon, text in app._insights)
 
-# Pie subtitle (projection line under the YTD pie)
-on_track_color = app.SERIES["fresh"] if app.on_track else app.SERIES["overreach"]
-pie_subtitle_html = (
-    f'<span style="color:{MUTED}">Projected {app.latest_year}: </span>'
-    f'<span style="color:{TEXT};font-weight:600">{app.projected_hours:.1f}h </span>'
-    f'<span style="color:{on_track_color};font-weight:500">'
-    f'{app.trend_emoji} {abs(app.projected_hours - app.prev_year_hours):.1f}h '
-    f'vs {app.prev_year}</span>'
-)
-
 # Tables (use the same DataFrames app.py builds)
 individual_stats_table = df_to_table_html(
     app.individual_stats_df.to_dict("records"),
@@ -291,8 +282,19 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<!-- Section B: Year heatmap + tables -->
-<div class="row"><div class="col-md-12"><div id="year-heatmap"></div></div></div>
+<!-- Section B: Year heatmap (toggle Load / Activities) + tables -->
+<div class="d-flex justify-content-end mb-1">
+  <div class="btn-group btn-group-sm" role="group">
+    <button type="button" id="hm-btn-load" class="btn btn-secondary active"
+            onclick="toggleHeatmap('load')">Load</button>
+    <button type="button" id="hm-btn-activities" class="btn btn-secondary"
+            onclick="toggleHeatmap('activities')">Activity</button>
+  </div>
+</div>
+<div class="row"><div class="col-md-12">
+  <div id="year-heatmap-load"></div>
+  <div id="year-heatmap-activities" style="display:none"></div>
+</div></div>
 
 <hr>
 
@@ -360,10 +362,7 @@ HTML = f"""<!DOCTYPE html>
 <div class="row">
   <div class="col-md-4"><div id="pie-all"></div></div>
   <div class="col-md-4"><div id="pie-prev"></div></div>
-  <div class="col-md-4">
-    <div id="pie-ytd"></div>
-    <div class="text-center mt-1" style="font-size:0.95rem">{pie_subtitle_html}</div>
-  </div>
+  <div class="col-md-4"><div id="pie-ytd"></div></div>
 </div>
 
 <hr>
@@ -399,6 +398,26 @@ function updateFilter() {{
       el.classList.remove('active');
     }}
   }});
+}}
+
+function toggleHeatmap(view) {{
+  const load = document.getElementById('year-heatmap-load');
+  const act = document.getElementById('year-heatmap-activities');
+  const loadBtn = document.getElementById('hm-btn-load');
+  const actBtn = document.getElementById('hm-btn-activities');
+  if (view === 'load') {{
+    load.style.display = 'block';
+    act.style.display = 'none';
+    loadBtn.classList.add('active');
+    actBtn.classList.remove('active');
+    Plotly.Plots.resize(load);
+  }} else {{
+    load.style.display = 'none';
+    act.style.display = 'block';
+    loadBtn.classList.remove('active');
+    actBtn.classList.add('active');
+    Plotly.Plots.resize(act);
+  }}
 }}
 
 document.addEventListener('DOMContentLoaded', () => {{
