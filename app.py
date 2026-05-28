@@ -639,10 +639,14 @@ daily_scores['acwr'] = (
 )
 acwr_recent = daily_scores[daily_scores['date'] >= form_recent_start].copy()
 
-_acwr_min_visible = min(0.5, float(acwr_recent['acwr'].min()) - 0.1
-                        if acwr_recent['acwr'].notna().any() else 0.5)
-_acwr_max_visible = max(1.7, float(acwr_recent['acwr'].max()) + 0.1
-                        if acwr_recent['acwr'].notna().any() else 1.7)
+# Load Ratio axis aligned to the Form colour bands. Two-point linear pin:
+#   0.8 ↔ Form +5  (Fresh / Optimal boundary)
+#   1.5 ↔ Form −30 (Productive / Overreaching boundary)
+# Slope: 35 form units = 0.7 load units → 50 form per 1 load. The inner
+# cutoff 1.3 lands at Form ≈ −20 instead of −10 (~6% chart offset), an
+# accepted tradeoff for getting the outer "danger" lines to align exactly.
+_acwr_axis_top    = 0.8 + (5 - form_y_max) / 50      # low load, top of chart
+_acwr_axis_bottom = 0.8 + (5 - form_y_min) / 50      # high load, bottom of chart
 
 combined_form_acwr_fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -735,13 +739,13 @@ for y, label, color in zone_label_positions:
 # axis is inverted, so "Risk" sits at the bottom (aligned with Overreaching)
 # and "Undertraining" at the top (aligned with Fresh).
 acwr_zone_label_positions = [
-    (max(_acwr_min_visible + 0.05, 0.7), "Undertraining", SERIES["fresh"]),
+    (0.7, "Undertraining", SERIES["fresh"]),
     (1.05, "Optimal", SERIES["optimal"]),
     (1.4, "Caution", SERIES["productive"]),
-    (min(_acwr_max_visible - 0.05, 1.6), "Risk", SERIES["overreach"]),
+    (1.6, "Risk", SERIES["overreach"]),
 ]
 for y, label, color in acwr_zone_label_positions:
-    if _acwr_min_visible <= y <= _acwr_max_visible:
+    if _acwr_axis_top <= y <= _acwr_axis_bottom:
         combined_form_acwr_fig.add_annotation(
             xref="paper", yref="y2",
             x=0.99, y=y, xanchor="right", yanchor="middle",
@@ -773,7 +777,8 @@ combined_form_acwr_fig.update_yaxes(
 # intuitively: lines that drop together = stress accumulating.
 combined_form_acwr_fig.update_yaxes(
     title_text="Load Ratio (ACWR)", secondary_y=True,
-    range=[_acwr_max_visible, _acwr_min_visible], tickformat=".1f",
+    range=[_acwr_axis_bottom, _acwr_axis_top],
+    tickmode='array', tickvals=[0.8, 1.0, 1.3, 1.5], tickformat=".1f",
     showgrid=False,
 )
 

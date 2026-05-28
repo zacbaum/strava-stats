@@ -108,7 +108,7 @@ def kpi_card_html(title, value, subtitle, value_color=None):
 def insight_card_html(icon, text):
     # Convert simple markdown bold (**X**) to <strong>X</strong>
     text_html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    return f"""<div class="col-md-4 mb-2">
+    return f"""<div class="col-md-3 mb-2">
   <div class="card h-100" style="{CARD_STYLE}">
     <div class="card-body py-3 text-center">
       <div style="font-size:1.4rem;margin-bottom:4px">{icon}</div>
