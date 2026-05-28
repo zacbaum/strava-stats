@@ -731,6 +731,24 @@ for y, label, color in zone_label_positions:
             font=dict(color=color, size=10, family=chart_font_family, weight=600),
         )
 
+# Load Ratio (ACWR) zone labels — RHS, mirroring the Form labels. The right
+# axis is inverted, so "Risk" sits at the bottom (aligned with Overreaching)
+# and "Undertraining" at the top (aligned with Fresh).
+acwr_zone_label_positions = [
+    (max(_acwr_min_visible + 0.05, 0.7), "Undertraining", SERIES["fresh"]),
+    (1.05, "Optimal", SERIES["optimal"]),
+    (1.4, "Caution", SERIES["productive"]),
+    (min(_acwr_max_visible - 0.05, 1.6), "Risk", SERIES["overreach"]),
+]
+for y, label, color in acwr_zone_label_positions:
+    if _acwr_min_visible <= y <= _acwr_max_visible:
+        combined_form_acwr_fig.add_annotation(
+            xref="paper", yref="y2",
+            x=0.99, y=y, xanchor="right", yanchor="middle",
+            text=label, showarrow=False,
+            font=dict(color=color, size=10, family=chart_font_family, weight=600),
+        )
+
 combined_form_acwr_fig.update_layout(
     template=dark_template,
     title_text=(
@@ -1093,6 +1111,9 @@ _year_yaxis_kwargs = dict(
     tickmode='array', tickvals=list(range(7)),
     ticktext=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
     showgrid=False, title_text=None, autorange='reversed', tickfont=dict(size=10),
+    # Suppress the default zeroline at y=0 — otherwise it bisects Monday cells
+    # in the Activities view (shapes are layer="below" so the line draws over).
+    zeroline=False,
 )
 
 # --- Load view: a Heatmap coloured by daily TRIMP, custom-tooltip per cell.
@@ -1529,42 +1550,7 @@ elif _pace_this is not None:
         ("🏃", f"Average pace at ~150 bpm in {latest_year}: **{_format_pace(_pace_this)} /km**.")
     )
 
-# 4) Same-day-last-year fitness comparison (date-anchored YoY)
-try:
-    _same_day_last_year = today.replace(year=today.year - 1)
-except ValueError:
-    # leap-day fallback: Feb 28 of the prior year
-    _same_day_last_year = today.replace(year=today.year - 1, day=28)
-_last_year_row = daily_scores[daily_scores['date'] == _same_day_last_year]
-if not _last_year_row.empty:
-    _last_year_fitness = float(_last_year_row['fitness'].iloc[0])
-    _yoy_delta = current_fitness - _last_year_fitness
-    _yoy_verb = "gained" if _yoy_delta >= 0 else "lost"
-    _insights.append(
-        ("📅",
-         f"On this date last year your fitness was **{_last_year_fitness:.0f}** — today it's "
-         f"**{current_fitness:.0f}** ({_yoy_verb} **{abs(_yoy_delta):.0f}** in 12 months).")
-    )
-
-# 5) Days since last [activity type with longest gap] — cross-training nudge
-_major_types = ['Run', 'Ride', 'Hike', 'Cardio', 'Weight Training', 'Walk', 'Racquet Sports']
-_gaps = {}
-for _t in _major_types:
-    _last = df[df['type'] == _t]['date'].max() if not df[df['type'] == _t].empty else None
-    if _last is not None:
-        _gaps[_t] = (today - _last).days
-if _gaps:
-    _gap_type, _gap_days = max(_gaps.items(), key=lambda x: x[1])
-    if _gap_days >= 14:
-        _insights.append(
-            ("🤔", f"Your last **{_gap_type}** was **{_gap_days} days ago** — time to mix it up.")
-        )
-    else:
-        _insights.append(
-            ("🤔", f"Your longest dry spell: **{_gap_type}** {_gap_days} days ago.")
-        )
-
-# 6) Vertical metres climbed this year (with Everest reference)
+# 4) Vertical metres climbed this year (with Everest reference)
 _year_vert_m = float(df[df['year'] == latest_year]['total_elevation_gain'].sum())
 if _year_vert_m > 0:
     _everest_pct = _year_vert_m / 8849 * 100
@@ -1587,7 +1573,7 @@ def _insight_card(icon, text):
                    "borderRadius": "10px"},
             className="h-100"
         ),
-        md=4, className="mb-2"
+        md=3, className="mb-2"
     )
 
 layout_insights = (
