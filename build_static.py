@@ -321,10 +321,6 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<div class="row"><div class="col-md-12"><div id="yoy"></div></div></div>
-
-<hr>
-
 <div class="px-4 py-2 mb-2" style="line-height:1.6;color:{TEXT};font-size:0.92rem">
 {explainer_html}
 </div>
@@ -338,9 +334,13 @@ HTML = f"""<!DOCTYPE html>
   </select>
 </div>
 
-<div class="row"><div class="col-md-12">
+<!-- Fitness (filter-aware) + YoY trajectory side-by-side -->
+<div class="row">
+  <div class="col-md-6">
 {filter_aware_divs_html('fitness')}
-</div></div>
+  </div>
+  <div class="col-md-6"><div id="yoy"></div></div>
+</div>
 
 <hr>
 

@@ -526,9 +526,8 @@ layout_kpi = dbc.Row([
                      value_color=week_color), md=2),
     dbc.Col(kpi_card("Weekly Streak", f"{week_streak} weeks",
                      f"{week_streak_activities} activities"), md=2),
-    dbc.Col(kpi_card("Last Activity", last_activity_date.strftime("%b %d"),
-                     f"{days_since_last} day{'s' if days_since_last != 1 else ''} ago"
-                     if days_since_last > 0 else "today"), md=2),
+    dbc.Col(kpi_card("Day Streak", f"{current_streak} days",
+                     f"ending {last_activity_date.strftime('%b %d')}"), md=2),
 ], className="g-3 mb-2")
 
 # 1. Activity Type Distribution Charts
@@ -754,9 +753,13 @@ combined_form_acwr_fig.update_yaxes(
     title_text="Form (TSB)", secondary_y=False,
     range=[form_y_min, form_y_max], tickformat=".0f",
 )
+# Right axis is INVERTED so high Load Ratio (high injury risk = bad) sits at
+# the BOTTOM, aligning with low Form (overreaching = also bad). The "danger"
+# end is the same direction on both axes, which makes the dual-line read
+# intuitively: lines that drop together = stress accumulating.
 combined_form_acwr_fig.update_yaxes(
     title_text="Load Ratio (ACWR)", secondary_y=True,
-    range=[_acwr_min_visible, _acwr_max_visible], tickformat=".1f",
+    range=[_acwr_max_visible, _acwr_min_visible], tickformat=".1f",
     showgrid=False,
 )
 
@@ -820,7 +823,8 @@ def build_fitness_fig(start_date):
                      tickformat=".0f")
     return fig
 
-layout_fitness = dbc.Row([dbc.Col(dcc.Graph(id='fitness-graph', figure=build_fitness_fig(INITIAL_FILTER_START)), md=12)])
+# layout_fitness_yoy_row (fitness chart side-by-side with YoY trajectory) is
+# assembled after yoy_fig is built — see further down in this file.
 
 # 3. Rolling Volume Chart — global-filter aware
 
@@ -1517,7 +1521,13 @@ yoy_fig.update_layout(
     yaxis=dict(title_text="Hours", rangemode="tozero", tickformat=".0f"),
 )
 
-layout_yoy_trajectory = dbc.Row([dbc.Col(dcc.Graph(figure=yoy_fig), md=12)])
+# Fitness chart (filter-aware) side-by-side with YoY trajectory (full history).
+# Filter dropdown sits above this row in app.layout so the relationship between
+# the filter and the fitness chart on the left half stays visually clear.
+layout_fitness_yoy_row = dbc.Row([
+    dbc.Col(dcc.Graph(id='fitness-graph', figure=build_fitness_fig(INITIAL_FILTER_START)), md=6),
+    dbc.Col(dcc.Graph(figure=yoy_fig), md=6),
+])
 
 #######################
 # MAP — where you train
@@ -1706,12 +1716,10 @@ app.layout = dbc.Container([
     layout_bonus,
     layout_yoy,
     html.Hr(),
-    layout_yoy_trajectory,
-    html.Hr(),
     fitness_explainer,
     layout_form_recent,
     filter_dropdown,
-    layout_fitness,
+    layout_fitness_yoy_row,
     html.Hr(),
     layout_heatmap_cumulative,
     html.Hr(),
