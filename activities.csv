@@ -1,4 +1,5 @@
 id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,start_date_local,start_latlng,kilojoules,average_heartrate,max_heartrate,elev_high,elev_low,average_speed,max_speed,location_city,location_state,location_country,timezone,summary_polyline
+18698704650,WeightTraining,Morning Weight Training,0.0,4372,4372,0.0,2026-05-29 05:47:45+00:00,2026-05-29T06:47:45Z,[],,112.9,144.0,0.0,0.0,0.0,0.0,,,,(GMT+00:00) Europe/London,
 18685220555,WeightTraining,Morning Weight Training,0.0,2996,2996,0.0,2026-05-28 04:57:01+00:00,2026-05-28T05:57:01Z,[],,118.2,147.0,0.0,0.0,0.0,0.0,,,,(GMT+00:00) Europe/London,
 18657607841,WeightTraining,Morning Weight Training,0.0,3018,3018,0.0,2026-05-26 06:42:03+00:00,2026-05-26T07:42:03Z,[],,122.3,162.0,0.0,0.0,0.0,0.0,,,,(GMT+01:00) Africa/Algiers,
 18643331292,WeightTraining,Morning Weight Training,0.0,3152,3152,0.0,2026-05-25 05:59:28+00:00,2026-05-25T06:59:28Z,[],,113.1,146.0,0.0,0.0,0.0,0.0,,,,(GMT+01:00) Africa/Algiers,
