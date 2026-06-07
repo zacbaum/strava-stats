@@ -1,4 +1,5 @@
 id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,start_date_local,start_latlng,kilojoules,average_heartrate,max_heartrate,elev_high,elev_low,average_speed,max_speed,location_city,location_state,location_country,timezone,summary_polyline
+18823629212,WeightTraining,Morning Weight Training,0.0,2936,2936,0.0,2026-06-07 11:44:38+00:00,2026-06-07T07:44:38Z,[],,97.3,149.0,0.0,0.0,0.0,0.0,,,,(GMT-04:00) America/St_Kitts,
 18809948010,WeightTraining,Morning Weight Training,0.0,3270,3270,0.0,2026-06-06 12:11:27+00:00,2026-06-06T08:11:27Z,[],,100.7,139.0,0.0,0.0,0.0,0.0,,,,(GMT-04:00) America/St_Kitts,
 18785055527,WeightTraining,Morning Weight Training,0.0,2660,2660,0.0,2026-06-04 14:19:46+00:00,2026-06-04T10:19:46Z,[],,125.2,151.0,0.0,0.0,0.0,0.0,,,,(GMT-04:00) America/St_Kitts,
 18784433820,Workout,Morning Pickleball,1695.8,3354,3354,0.0,2026-06-04 13:15:50+00:00,2026-06-04T09:15:50Z,[],,145.9,179.0,0.0,0.0,0.506,0.0,,,,(GMT-04:00) America/St_Kitts,
