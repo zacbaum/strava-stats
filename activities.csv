@@ -1,4 +1,5 @@
 id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,start_date_local,start_latlng,kilojoules,average_heartrate,max_heartrate,elev_high,elev_low,average_speed,max_speed,location_city,location_state,location_country,timezone,summary_polyline
+18869393251,Workout,Afternoon Pickleball,1464.1,3777,3777,0.0,2026-06-10 18:07:48+00:00,2026-06-10T14:07:48Z,[],,139.8,165.0,0.0,0.0,0.388,0.0,,,,(GMT-04:00) America/St_Kitts,
 18857357896,Workout,Afternoon Pickleball,2425.9,5792,5792,0.0,2026-06-09 21:03:27+00:00,2026-06-09T17:03:27Z,[],,138.9,168.0,0.0,0.0,0.419,0.0,,,,(GMT-04:00) America/St_Kitts,
 18855697784,Sail,Afternoon Sail,0.0,3596,3596,0.0,2026-06-09 18:04:43+00:00,2026-06-09T14:04:43Z,[],,92.9,117.0,0.0,0.0,0.0,0.0,,,,(GMT-04:00) America/St_Kitts,
 18853430681,WeightTraining,Lunch Weight Training,0.0,3080,3080,0.0,2026-06-09 16:13:46+00:00,2026-06-09T12:13:46Z,[],,108.1,144.0,0.0,0.0,0.0,0.0,,,,(GMT-04:00) America/St_Kitts,
