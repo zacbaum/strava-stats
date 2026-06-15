@@ -1,4 +1,5 @@
 id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,start_date_local,start_latlng,kilojoules,average_heartrate,max_heartrate,elev_high,elev_low,average_speed,max_speed,location_city,location_state,location_country,timezone,summary_polyline
+18925565964,WeightTraining,Morning Weight Training,0.0,2188,2188,0.0,2026-06-15 06:11:31+00:00,2026-06-15T07:11:31Z,[],,133.2,167.0,0.0,0.0,0.0,0.0,,,,(GMT+00:00) Europe/London,
 18894417008,Workout,Afternoon Tennis,1533.5,3819,3819,0.0,2026-06-12 17:59:17+00:00,2026-06-12T13:59:17Z,[],,130.1,162.0,0.0,0.0,0.402,0.0,,,,(GMT-04:00) America/St_Kitts,
 18893005982,Golf,Lunch Golf,225.5,1408,1408,0.0,2026-06-12 16:26:00+00:00,2026-06-12T12:26:00Z,[],,112.1,131.0,0.0,0.0,0.16,0.0,,,,(GMT-04:00) America/St_Kitts,
 18892070750,WeightTraining,Morning Weight Training,0.0,3231,3231,0.0,2026-06-12 14:34:00+00:00,2026-06-12T10:34:00Z,[],,111.9,145.0,0.0,0.0,0.0,0.0,,,,(GMT-04:00) America/St_Kitts,
