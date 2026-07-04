@@ -57,8 +57,6 @@ figs["pie-ytd"] = app._make_pie(app.pie_df("YTD"),
 # Other named figures
 figs["combined-form-acwr"] = app.combined_form_acwr_fig
 figs["yoy"] = app.yoy_fig
-figs["year-heatmap-load"] = app.year_heatmap_load_fig
-figs["year-heatmap-activities"] = app.year_heatmap_activities_fig
 figs["map"] = app.map_fig
 figs["scatter-pace"] = app.scatter_pace_fig
 figs["scatter-efficiency"] = app.scatter_efficiency_fig
@@ -92,6 +90,13 @@ CARD_STYLE = (
     f"background-color:{PAPER};"
     f"border:1px solid {GRID};"
     "border-radius:10px;"
+)
+
+# Summary bar for collapsible <details> sections (less-used plots).
+SUMMARY_STYLE = (
+    f"cursor:pointer;font-weight:600;color:{TEXT};"
+    f"padding:8px 14px;background-color:{PAPER};"
+    f"border:1px solid {GRID};border-radius:8px;"
 )
 
 def kpi_card_html(title, value, subtitle, value_color=None):
@@ -308,23 +313,7 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<!-- Section B: Year heatmap (toggle Load / Activities) -->
-<div class="d-flex justify-content-end mb-1">
-  <div class="btn-group btn-group-sm" role="group">
-    <button type="button" id="hm-btn-load" class="btn btn-secondary active"
-            onclick="toggleHeatmap('load')">Load</button>
-    <button type="button" id="hm-btn-activities" class="btn btn-secondary"
-            onclick="toggleHeatmap('activities')">Activity</button>
-  </div>
-</div>
-<div class="row"><div class="col-md-12">
-  <div id="year-heatmap-load"></div>
-  <div id="year-heatmap-activities" style="display:none"></div>
-</div></div>
-
-<hr>
-
-<!-- Section C: Filter + fitness/YoY + heatmap/cumulative -->
+<!-- Section B: Filter + fitness/YoY + strain + heatmap/cumulative -->
 <div class="d-flex align-items-center justify-content-center my-3 px-3 py-2 filter-bar">
   <span class="me-3 fw-semibold" style="color:{TEXT}">Filter range:</span>
   <select id="global-filter" class="form-select w-auto">
@@ -360,23 +349,27 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<!-- Section D: Reference / all-time -->
-<div class="row">
-  <div class="col-md-6"><div id="scatter-pace"></div></div>
-  <div class="col-md-6"><div id="scatter-efficiency"></div></div>
-</div>
-
-<hr>
-
+<!-- Section C: Reference (less-used plots collapsed by default) -->
 <div class="row"><div class="col-md-12"><div id="map"></div></div></div>
 
 <hr>
 
-<div class="row">
-  <div class="col-md-4"><div id="pie-all"></div></div>
-  <div class="col-md-4"><div id="pie-prev"></div></div>
-  <div class="col-md-4"><div id="pie-ytd"></div></div>
-</div>
+<details class="mb-2">
+  <summary style="{SUMMARY_STYLE}">🏃 Run Pace &amp; Efficiency</summary>
+  <div class="row pt-2">
+    <div class="col-md-6"><div id="scatter-pace"></div></div>
+    <div class="col-md-6"><div id="scatter-efficiency"></div></div>
+  </div>
+</details>
+
+<details class="mb-2">
+  <summary style="{SUMMARY_STYLE}">🥧 Activity Mix</summary>
+  <div class="row pt-2">
+    <div class="col-md-4"><div id="pie-all"></div></div>
+    <div class="col-md-4"><div id="pie-prev"></div></div>
+    <div class="col-md-4"><div id="pie-ytd"></div></div>
+  </div>
+</details>
 
 <hr>
 
@@ -413,26 +406,6 @@ function updateFilter() {{
   }});
 }}
 
-function toggleHeatmap(view) {{
-  const load = document.getElementById('year-heatmap-load');
-  const act = document.getElementById('year-heatmap-activities');
-  const loadBtn = document.getElementById('hm-btn-load');
-  const actBtn = document.getElementById('hm-btn-activities');
-  if (view === 'load') {{
-    load.style.display = 'block';
-    act.style.display = 'none';
-    loadBtn.classList.add('active');
-    actBtn.classList.remove('active');
-    Plotly.Plots.resize(load);
-  }} else {{
-    load.style.display = 'none';
-    act.style.display = 'block';
-    loadBtn.classList.remove('active');
-    actBtn.classList.add('active');
-    Plotly.Plots.resize(act);
-  }}
-}}
-
 document.addEventListener('DOMContentLoaded', () => {{
   // Render every figure on load
   Object.keys(FIGURES).forEach(renderFigure);
@@ -442,6 +415,16 @@ document.addEventListener('DOMContentLoaded', () => {{
   sel.value = {DEFAULT_FILTER!r};
   updateFilter();
   sel.addEventListener('change', updateFilter);
+
+  // Collapsible <details>: Plotly renders at 0px while hidden, so resize the
+  // plots inside the moment a section is first opened.
+  document.querySelectorAll('details').forEach(d => {{
+    d.addEventListener('toggle', () => {{
+      if (d.open) {{
+        d.querySelectorAll('.js-plotly-plot').forEach(p => Plotly.Plots.resize(p));
+      }}
+    }});
+  }});
 }});
 </script>
 </body>

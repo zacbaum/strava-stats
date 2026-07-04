@@ -180,7 +180,7 @@ dark_template = dict(
         yaxis=dict(
             gridcolor=dark_grid_color, zerolinecolor=dark_grid_color,
             linecolor=dark_grid_color, tickcolor=dark_grid_color,
-            showgrid=True, gridwidth=1,
+            showgrid=False,
         ),
     )
 )
@@ -1138,7 +1138,7 @@ scatter_efficiency_fig = px.scatter(
 ).update_layout(
     template=dark_template,
     height=440,
-    xaxis=dict(title_text="Avg HR (bpm)", showgrid=True),
+    xaxis=dict(title_text="Avg HR (bpm)", showgrid=False),
     yaxis=dict(title_text="Pace (min/km)", autorange="reversed",
                tickvals=pace_ticks, ticktext=pace_tick_labels),
     legend=dict(title=dict(text="Year")),
@@ -1148,185 +1148,6 @@ layout_scatter = dbc.Row([
     dbc.Col(dcc.Graph(figure=scatter_pace_fig), md=6),
     dbc.Col(dcc.Graph(figure=scatter_efficiency_fig), md=6),
 ])
-
-# 7. Year activity heatmap — past 365 days × 7-row weekday grid. Two
-# interchangeable views:
-#   • Load view (default): single-colour cell per day, intensity by TRIMP
-#   • Activities view: each day's cell is split into sub-rectangles, one per
-#     activity that day, coloured by activity type
-# Both views share the same axis layout and an enriched tooltip per cell.
-_year_end = today
-_year_start_aligned = _year_end - timedelta(days=365 - 1)
-_year_start_aligned -= timedelta(days=_year_start_aligned.weekday())  # back to Monday
-
-_daily_load_full = df.groupby('date')['training_load'].sum()
-
-# Pre-compute per-day activity breakdowns for both tooltips and the split cells
-_acts_by_date = {
-    d: g.sort_values('duration_hr', ascending=False)
-    for d, g in df[(df['date'] >= _year_start_aligned) & (df['date'] <= _year_end)].groupby('date')
-}
-
-def _cell_tooltip(day, acts):
-    """Format a per-cell hover tooltip: date, each activity's hours/load, totals."""
-    if acts is None or acts.empty:
-        return f"<b>{day.strftime('%a · %b %d, %Y')}</b><br>Rest day"
-    lines = [f"<b>{day.strftime('%a · %b %d, %Y')}</b>"]
-    for _, act in acts.iterrows():
-        lines.append(
-            f"&nbsp;&nbsp;{act['type']}: {act['duration_hr']:.2f}h · "
-            f"load {act['training_load']:.0f}"
-        )
-    total_dur = float(acts['duration_hr'].sum())
-    total_load = float(acts['training_load'].sum())
-    lines.append(f"<b>Total: {total_dur:.2f}h · load {total_load:.0f}</b>")
-    return "<br>".join(lines)
-
-_week_starts = []
-_year_z = [[] for _ in range(7)]            # load values for the colour view
-_year_tooltips = [[] for _ in range(7)]     # rich tooltip per cell, shared
-_cursor = _year_start_aligned
-while _cursor <= _year_end:
-    _week_starts.append(_cursor)
-    for _d in range(7):
-        _day = _cursor + timedelta(days=_d)
-        if _day > _year_end:
-            _year_z[_d].append(None)
-            _year_tooltips[_d].append("")
-        else:
-            _year_z[_d].append(float(_daily_load_full.get(_day, 0)))
-            _year_tooltips[_d].append(_cell_tooltip(_day, _acts_by_date.get(_day)))
-    _cursor += timedelta(days=7)
-
-# Tick at the first week of each month
-_month_tick_idx = []
-_month_tick_text = []
-_seen_months = set()
-for i, ws in enumerate(_week_starts):
-    key = (ws.year, ws.month)
-    if key not in _seen_months:
-        _seen_months.add(key)
-        _month_tick_idx.append(i)
-        _month_tick_text.append(ws.strftime('%b'))
-
-# Shared axis kwargs so both views look identical
-_year_xaxis_kwargs = dict(
-    tickmode='array', tickvals=_month_tick_idx, ticktext=_month_tick_text,
-    showgrid=False, title_text=None, zeroline=False, tickfont=dict(size=10),
-    range=[-0.5, len(_week_starts) - 0.5],
-)
-_year_yaxis_kwargs = dict(
-    tickmode='array', tickvals=list(range(7)),
-    ticktext=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    showgrid=False, title_text=None, autorange='reversed', tickfont=dict(size=10),
-    # Suppress the default zeroline at y=0 — otherwise it bisects Monday cells
-    # in the Activities view (shapes are layer="below" so the line draws over).
-    zeroline=False,
-)
-
-# --- Load view: a Heatmap coloured by daily TRIMP, custom-tooltip per cell.
-year_heatmap_load_fig = go.Figure(data=go.Heatmap(
-    z=_year_z,
-    x=list(range(len(_week_starts))),
-    y=list(range(7)),  # numerical so it lines up with the activities-view shapes
-    customdata=_year_tooltips,
-    colorscale=[
-        [0.00, "#1F2937"],     # no activity → dark grey
-        [0.0001, "#FED7AA"],   # any activity → light amber
-        [0.30, "#FB923C"],     # moderate → orange
-        [0.70, "#DC2626"],     # high → red
-        [1.00, "#7F1D1D"],     # peak → deep red
-    ],
-    hovertemplate="%{customdata}<extra></extra>",
-    xgap=2, ygap=2,
-    colorbar=dict(title=dict(text="Load", font=dict(size=11)),
-                  thickness=12, len=0.8, outlinewidth=0,
-                  tickfont=dict(size=10)),
-))
-year_heatmap_load_fig.update_layout(
-    template=dark_template,
-    title_text="📅 Training Year · Past 365 Days",
-    height=240,
-    xaxis=_year_xaxis_kwargs, yaxis=_year_yaxis_kwargs,
-)
-
-# --- Activities view: rectangle shapes split horizontally inside each cell —
-# one strip per activity on that day, coloured by activity type. A transparent
-# scatter layer above provides hover for the shared tooltip.
-year_heatmap_activities_fig = go.Figure()
-_cell_pad = 0.42  # half-height/width of a cell (slight margin for visual gap)
-_hover_x, _hover_y, _hover_text = [], [], []
-for _w_idx, _ws in enumerate(_week_starts):
-    for _d in range(7):
-        _day = _ws + timedelta(days=_d)
-        if _day > _year_end:
-            continue
-        _acts = _acts_by_date.get(_day)
-        if _acts is not None and not _acts.empty:
-            _n = len(_acts)
-            for _i, (_, _act) in enumerate(_acts.iterrows()):
-                _frac_lo = _i / _n
-                _frac_hi = (_i + 1) / _n
-                year_heatmap_activities_fig.add_shape(
-                    type="rect", xref="x", yref="y",
-                    x0=_w_idx - _cell_pad + (_frac_lo * 2 * _cell_pad),
-                    x1=_w_idx - _cell_pad + (_frac_hi * 2 * _cell_pad),
-                    y0=_d - _cell_pad, y1=_d + _cell_pad,
-                    fillcolor=color_map.get(_act['type'], '#666666'),
-                    line_width=0, layer="below",
-                )
-        _hover_x.append(_w_idx)
-        _hover_y.append(_d)
-        _hover_text.append(_cell_tooltip(_day, _acts))
-
-# Invisible square markers anchor the hover tooltips
-year_heatmap_activities_fig.add_trace(go.Scatter(
-    x=_hover_x, y=_hover_y, mode='markers',
-    marker=dict(size=18, opacity=0, symbol='square'),
-    text=_hover_text,
-    hovertemplate="%{text}<extra></extra>",
-    showlegend=False,
-))
-
-# Legend chips — one transparent-marker trace per activity type so the colour
-# key sits in a horizontal legend above the chart.
-_legend_types_present = sorted(set(
-    t for _acts in _acts_by_date.values() for t in _acts['type'].unique()
-))
-for _t in _legend_types_present:
-    year_heatmap_activities_fig.add_trace(go.Scatter(
-        x=[None], y=[None], mode='markers',
-        marker=dict(size=10, color=color_map.get(_t, '#666666'), symbol='square'),
-        name=_t, showlegend=True, hoverinfo='skip',
-    ))
-
-year_heatmap_activities_fig.update_layout(
-    template=dark_template,
-    title_text="📅 Training Year · Past 365 Days · By Activity",
-    height=280,  # taller to make room for the legend
-    xaxis=_year_xaxis_kwargs, yaxis=_year_yaxis_kwargs,
-    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1,
-                font=dict(size=10)),
-)
-
-# Layout with a view toggle that flips between the two figures
-layout_year_heatmap = html.Div([
-    html.Div([
-        dbc.RadioItems(
-            id='year-heatmap-view',
-            options=[
-                {'label': 'Load', 'value': 'load'},
-                {'label': 'Activity', 'value': 'activities'},
-            ],
-            value='load',
-            inline=True,
-            labelClassName="me-3 small",
-            inputClassName="form-check-input",
-        ),
-    ], className="d-flex justify-content-end mb-1"),
-    dcc.Graph(id='year-heatmap-graph', figure=year_heatmap_load_fig),
-])
-
 
 # 8. Bonus stats tables — activity feed: 5 rows, Strava-style detail
 recent_activities = df.sort_values("start_date_local", ascending=False).head(5)
@@ -1704,7 +1525,40 @@ cum_this_year = _yoy_cumulative(latest_year)
 cum_last_year = _yoy_cumulative(prev_year)
 day_now = today.timetuple().tm_yday
 
+# 90% prediction band + central projection for the rest of the year. The central
+# line continues this year's cumulative by mirroring last year's daily increments
+# for the days ahead (the same pattern-based model as the KPI projection, so it
+# lines up with the dotted prior-year curve). The band widens with √(days ahead) —
+# the natural growth of accumulated day-to-day variance.
+_yoy_pred = None
+if cum_this_year is not None and cum_last_year is not None and 1 <= day_now < 366:
+    _yr_now = df[df['year'] == latest_year]
+    _daily_this = (_yr_now.groupby(_yr_now['start_date_local'].dt.dayofyear)['duration_hr']
+                   .sum().reindex(range(1, day_now + 1), fill_value=0))
+    _sigma_daily = float(_daily_this.std(ddof=1)) if len(_daily_this) > 1 else 0.0
+    _base = float(cum_this_year.iloc[day_now - 1])
+    _last_at_now = float(cum_last_year.iloc[day_now - 1])
+    _fdays = list(range(day_now, 367))
+    _central, _upper, _lower = [], [], []
+    for _d in _fdays:
+        _c = _base + (float(cum_last_year.iloc[_d - 1]) - _last_at_now)
+        _se = 1.645 * _sigma_daily * np.sqrt(max(_d - day_now, 0))
+        _central.append(round(_c, 2))
+        _upper.append(round(_c + _se, 2))
+        _lower.append(round(max(_c - _se, _base), 2))  # cumulative hours can't fall
+    _yoy_pred = (_fdays, _central, _upper, _lower)
+
 yoy_fig = go.Figure()
+
+# Prediction band first so it sits behind every line
+if _yoy_pred is not None:
+    _fdays, _central, _upper, _lower = _yoy_pred
+    yoy_fig.add_trace(go.Scatter(
+        x=_fdays + _fdays[::-1], y=_upper + _lower[::-1],
+        fill='toself', fillcolor='rgba(96,165,250,0.13)',
+        line=dict(width=0), hoverinfo='skip',
+        name='90% range', showlegend=False,
+    ))
 
 # Older history first so it sits behind the prominent lines
 older_years = sorted([int(y) for y in df['year'].unique() if y < prev_year])
@@ -1740,28 +1594,34 @@ if cum_this_year is not None:
         hovertemplate=f"<b>{latest_year}</b>: %{{y:.1f}}h<extra></extra>"
     ))
 
-# Today indicator + delta annotation
+# Central projection — dashed continuation of the current-year line
+if _yoy_pred is not None:
+    _fdays, _central, _upper, _lower = _yoy_pred
+    yoy_fig.add_trace(go.Scatter(
+        x=_fdays, y=_central, mode='lines',
+        line=dict(color=SERIES["optimal"], width=1.6, dash='dash'),
+        hovertemplate=f"<b>{latest_year} projected</b>: %{{y:.1f}}h<extra></extra>",
+        name=f'{latest_year} projected', showlegend=False,
+    ))
+
+# Today indicator; the ahead/behind delta now lives in the title, not on the line
+_yoy_delta_suffix = ""
 if cum_this_year is not None and cum_last_year is not None and day_now >= 1:
     yoy_fig.add_vline(x=day_now, line_dash="dash", line_color=SERIES["form_zero"],
                       line_width=1)
     same_day_delta = cum_this_year.iloc[day_now - 1] - cum_last_year.iloc[day_now - 1]
     delta_label = f"+{same_day_delta:.1f}h ahead" if same_day_delta >= 0 else f"{abs(same_day_delta):.1f}h behind"
     delta_color = SERIES["fresh"] if same_day_delta >= 0 else SERIES["overreach"]
-    yoy_fig.add_annotation(
-        x=day_now, y=cum_this_year.iloc[day_now - 1],
-        text=f"  {delta_label}  ",
-        font=dict(color=delta_color, size=11, family=chart_font_family, weight=600),
-        showarrow=False,
-        bgcolor=dark_paper_color, bordercolor=delta_color, borderwidth=1, borderpad=4,
-        xanchor='left', yanchor='middle',
-    )
+    _yoy_delta_suffix = (f"&nbsp;&nbsp;<span style='color:{delta_color}; "
+                         f"font-weight:600'>{delta_label}</span>")
 
 month_starts = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
 month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 yoy_fig.update_layout(
     template=dark_template,
-    title_text=f"📅 Year-over-Year · Cumulative Hours · {prev_year} vs {latest_year}",
+    title_text=(f"📅 Year-over-Year · Cumulative Hours · {prev_year} vs {latest_year}"
+                + _yoy_delta_suffix),
     hovermode="x unified",
     height=440,
     xaxis=dict(tickmode='array', tickvals=month_starts, ticktext=month_labels,
@@ -1955,11 +1815,25 @@ if n_routes:
 else:
     layout_map = html.Div()
 
+# Collapsible <details> wrapper — keeps less-used plots tucked away by default
+# so the page stays compact (especially on mobile). Native disclosure, no JS in
+# the Dash app; the static export adds a resize-on-open handler for Plotly.
+_summary_style = {
+    "cursor": "pointer", "fontWeight": 600, "color": dark_text_color,
+    "padding": "8px 14px", "backgroundColor": dark_paper_color,
+    "border": f"1px solid {dark_grid_color}", "borderRadius": "8px",
+}
+
+def collapsible(title, content):
+    return html.Details([
+        html.Summary(title, style=_summary_style),
+        html.Div(content, className="pt-2"),
+    ], className="mb-2")
+
 # Final app layout
 # Section A — Current state (daily glance): KPIs · Insights · Stats tables · Form+Load.
-# Section B — Recent activity: Year heatmap.
-# Section C — Trends: Filter · Fitness+YoY trajectory · Heatmap+Cumulative.
-# Section D — Reference / all-time: Run scatters · Map · Pies · PRs.
+# Section B — Trends: Filter · Fitness+YoY trajectory · Heatmap+Cumulative.
+# Section C — Reference: Map · (collapsed) Pace/Efficiency · Activity mix · PRs.
 app.layout = dbc.Container([
     html.H1("Strava Training Dashboard", className="text-center my-4 dashboard-title"),
     # Section A
@@ -1972,10 +1846,7 @@ app.layout = dbc.Container([
     fitness_explainer,
     layout_form_recent,
     html.Hr(),
-    # Section B
-    layout_year_heatmap,
-    html.Hr(),
-    # Section C
+    # Section B — Trends
     filter_dropdown,
     layout_fitness_yoy_row,
     html.Hr(),
@@ -1983,12 +1854,11 @@ app.layout = dbc.Container([
     html.Hr(),
     layout_heatmap_cumulative,
     html.Hr(),
-    # Section D
-    layout_scatter,
-    html.Hr(),
+    # Section C — Reference (less-used plots collapsed by default)
     layout_map,
     html.Hr(),
-    layout_pie,
+    collapsible("🏃 Run Pace & Efficiency", layout_scatter),
+    collapsible("🥧 Activity Mix", layout_pie),
     html.Hr(),
     layout_prs,
 ], fluid=True, style={"backgroundColor": dark_bg_color})
@@ -2008,14 +1878,6 @@ def _update_filtered_charts(filter_value):
         build_heatmap_fig(start),
         build_cumulative_time_fig(start),
     )
-
-@app.callback(
-    Output('year-heatmap-graph', 'figure'),
-    Input('year-heatmap-view', 'value'),
-)
-def _toggle_year_heatmap(view):
-    return (year_heatmap_activities_fig if view == 'activities'
-            else year_heatmap_load_fig)
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=10000)
