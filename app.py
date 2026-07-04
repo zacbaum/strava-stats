@@ -214,6 +214,50 @@ daily_scores['fitness'] = daily_scores['training_load'].ewm(span=42, min_periods
 daily_scores['fatigue'] = daily_scores['training_load'].ewm(span=7, min_periods=1).mean()
 daily_scores['form'] = daily_scores['fitness'] - daily_scores['fatigue']
 
+# Daily Strain — a WHOOP-style 0–21 exertion score. Logarithmic map of the day's
+# total training load, calibrated so the 99th-percentile day ≈ 21. Unlike the
+# cardio-fitness model (CTL/ATL/TSB), strain simply accumulates every session's
+# load, so a solo weight-training day still registers a meaningful number.
+STRAIN_K = 0.02
+_active_load = daily_scores.loc[daily_scores['training_load'] > 0, 'training_load']
+_strain_ref = float(np.percentile(_active_load, 99)) if not _active_load.empty else 1.0
+_strain_denom = np.log1p(STRAIN_K * _strain_ref)
+daily_scores['strain'] = np.where(
+    daily_scores['training_load'] > 0,
+    (21 * np.log1p(STRAIN_K * daily_scores['training_load']) / _strain_denom).clip(upper=21),
+    0.0,
+)
+
+def strain_zone(s):
+    """WHOOP-style band + semantic colour for a 0–21 strain value."""
+    if s >= 18:
+        return "All-Out", SERIES["overreach"]
+    if s >= 14:
+        return "Strenuous", SERIES["productive"]
+    if s >= 10:
+        return "Moderate", SERIES["optimal"]
+    return "Light", SERIES["fresh"]
+
+# Headline strain = most recent day that actually had a session (so a rest day
+# today doesn't read as a misleading 0 in the KPI card or chart title).
+_active_strain = daily_scores[daily_scores['strain'] > 0]
+if not _active_strain.empty:
+    _ls_row = _active_strain.iloc[-1]
+    latest_strain = float(_ls_row['strain'])
+    latest_strain_date = _ls_row['date']
+else:
+    latest_strain, latest_strain_date = 0.0, today
+latest_strain_label, latest_strain_color = strain_zone(latest_strain)
+
+# Zone bands for the strain chart's backdrop (low → high). Reused by the
+# figure builder below; kept next to the model so the thresholds live together.
+STRAIN_BANDS = [
+    (0, 10, "Light", SERIES["fresh"]),
+    (10, 14, "Moderate", SERIES["optimal"]),
+    (14, 18, "Strenuous", SERIES["productive"]),
+    (18, 21.5, "All-Out", SERIES["overreach"]),
+]
+
 #######################
 # YEAR / PROJECTION METRICS
 #######################
@@ -517,17 +561,20 @@ def kpi_card(title, value, subtitle="", value_color=None):
                "borderRadius": "10px"}
     )
 
+# Seven cards — equal-width on desktop (md=True), two-up on mobile (xs=6).
 layout_kpi = dbc.Row([
-    dbc.Col(kpi_card("Fitness (CTL)", f"{current_fitness:.0f}", "42-day load avg"), md=2),
-    dbc.Col(kpi_card("Form (TSB)", f"{current_form:+.0f}", form_label, value_color=form_color), md=2),
-    dbc.Col(kpi_card("Load Ratio", f"{acwr:.2f}", acwr_label, value_color=acwr_color), md=2),
+    dbc.Col(kpi_card("Fitness (CTL)", f"{current_fitness:.0f}", "42-day load avg"), xs=6, md=True),
+    dbc.Col(kpi_card("Form (TSB)", f"{current_form:+.0f}", form_label, value_color=form_color), xs=6, md=True),
+    dbc.Col(kpi_card("Load Ratio", f"{acwr:.2f}", acwr_label, value_color=acwr_color), xs=6, md=True),
+    dbc.Col(kpi_card("Strain", f"{latest_strain:.1f}", latest_strain_label,
+                     value_color=latest_strain_color), xs=6, md=True),
     dbc.Col(kpi_card("This Week", f"{this_week_hours:.1f}h",
                      f"{week_sign}{week_delta:.1f}h vs 8-wk avg",
-                     value_color=week_color), md=2),
+                     value_color=week_color), xs=6, md=True),
     dbc.Col(kpi_card("Weekly Streak", f"{week_streak} weeks",
-                     f"{week_streak_activities} activities"), md=2),
+                     f"{week_streak_activities} activities"), xs=6, md=True),
     dbc.Col(kpi_card("Day Streak", f"{current_streak} days",
-                     f"ending {last_activity_date.strftime('%b %d')}"), md=2),
+                     f"ending {last_activity_date.strftime('%b %d')}"), xs=6, md=True),
 ], className="g-3 mb-2")
 
 # 1. Activity Type Distribution Charts
@@ -840,6 +887,62 @@ def build_fitness_fig(start_date):
                      tickformat=".0f")
     fig.update_yaxes(title_text="Score", secondary_y=True, showgrid=False,
                      tickformat=".0f")
+    return fig
+
+# 2c. Daily Strain chart (WHOOP-style 0–21) — global-filter aware
+
+def build_strain_fig(start_date):
+    ds = daily_scores[daily_scores['date'] >= start_date] if start_date else daily_scores
+    bar_colors = [strain_zone(s)[1] for s in ds['strain']]
+    fig = go.Figure()
+    # Faint zone bands behind the bars — same palette as the bars, so each day's
+    # coloured bar reinforces the band it lands in (mirrors the Form chart).
+    for y0, y1, _, hex_color in STRAIN_BANDS:
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        fig.add_shape(
+            type="rect", xref="paper", yref="y",
+            x0=0, x1=1, y0=y0, y1=y1,
+            fillcolor=f"rgba({r},{g},{b},0.32)",
+            line_width=0, layer="below",
+        )
+    fig.add_trace(go.Bar(
+        x=ds['date'], y=ds['strain'].round(1),
+        marker=dict(color=bar_colors, line=dict(width=0)),
+        hovertemplate="Strain: %{y:.1f}<br>%{x|%b %d}<extra></extra>",
+        name="Daily strain", showlegend=False,
+    ))
+    # 7-day rolling average line — reads the trend through the daily noise
+    fig.add_trace(go.Scatter(
+        x=ds['date'], y=ds['strain'].rolling(7, min_periods=1).mean().round(1),
+        mode="lines",
+        line=dict(color=dark_text_color, width=2),
+        hovertemplate="7-day avg: %{y:.1f}<extra></extra>",
+        name="7-day avg", showlegend=False,
+    ))
+    fig.update_layout(
+        template=dark_template,
+        title_text=(
+            f"🔥 Daily Strain · 0–21 &nbsp;&nbsp;"
+            f"<span style='color:{latest_strain_color}; font-weight:600'>"
+            f"Latest {latest_strain:.1f} · {latest_strain_label}</span>"
+        ),
+        height=440,
+        hovermode="x unified",
+        margin=dict(l=60, r=30, t=70, b=20),
+        bargap=0.15,
+    )
+    # Zone labels inside the plot at the left edge (mirrors the Form chart).
+    for y0, y1, label, color in STRAIN_BANDS:
+        fig.add_annotation(
+            xref="paper", yref="y",
+            x=0.01, y=(y0 + min(y1, 21)) / 2, xanchor="left", yanchor="middle",
+            text=label, showarrow=False,
+            font=dict(color=color, size=10, family=chart_font_family, weight=600),
+        )
+    fig.update_xaxes(title_text=None, showgrid=False)
+    fig.update_yaxes(title_text="Strain", range=[0, 21.5],
+                     tickvals=[0, 10, 14, 18, 21], tickformat=".0f")
     return fig
 
 # layout_fitness_yoy_row (fitness chart side-by-side with YoY trajectory) is
@@ -1674,6 +1777,10 @@ layout_fitness_yoy_row = dbc.Row([
     dbc.Col(dcc.Graph(figure=yoy_fig), md=6),
 ])
 
+layout_strain = dbc.Row([
+    dbc.Col(dcc.Graph(id='strain-graph', figure=build_strain_fig(INITIAL_FILTER_START)), md=12)
+])
+
 #######################
 # MAP — where you train
 #######################
@@ -1849,8 +1956,8 @@ else:
     layout_map = html.Div()
 
 # Final app layout
-# Section A — Current state (daily glance): KPIs · Insights · Form+Load.
-# Section B — Recent activity: Year heatmap · Bonus tables.
+# Section A — Current state (daily glance): KPIs · Insights · Stats tables · Form+Load.
+# Section B — Recent activity: Year heatmap.
 # Section C — Trends: Filter · Fitness+YoY trajectory · Heatmap+Cumulative.
 # Section D — Reference / all-time: Run scatters · Map · Pies · PRs.
 app.layout = dbc.Container([
@@ -1859,18 +1966,20 @@ app.layout = dbc.Container([
     layout_kpi,
     layout_insights,
     html.Hr(),
+    layout_bonus,
+    layout_yoy,
+    html.Hr(),
     fitness_explainer,
     layout_form_recent,
     html.Hr(),
     # Section B
     layout_year_heatmap,
     html.Hr(),
-    layout_bonus,
-    layout_yoy,
-    html.Hr(),
     # Section C
     filter_dropdown,
     layout_fitness_yoy_row,
+    html.Hr(),
+    layout_strain,
     html.Hr(),
     layout_heatmap_cumulative,
     html.Hr(),
@@ -1886,6 +1995,7 @@ app.layout = dbc.Container([
 
 @app.callback(
     Output('fitness-graph', 'figure'),
+    Output('strain-graph', 'figure'),
     Output('heatmap-graph', 'figure'),
     Output('cumulative-time-graph', 'figure'),
     Input('global-filter', 'value'),
@@ -1894,6 +2004,7 @@ def _update_filtered_charts(filter_value):
     start = _filter_start_from_value(filter_value)
     return (
         build_fitness_fig(start),
+        build_strain_fig(start),
         build_heatmap_fig(start),
         build_cumulative_time_fig(start),
     )

@@ -37,10 +37,11 @@ DEFAULT_FILTER = "365"
 
 figs = {}
 
-# Filter-aware (18 figures total — 3 charts × 6 filter values)
+# Filter-aware (24 figures total — 4 charts × 6 filter values)
 for val in FILTER_VALUES:
     start = app._filter_start_from_value(val)
     figs[f"fitness-{val}"] = app.build_fitness_fig(start)
+    figs[f"strain-{val}"] = app.build_strain_fig(start)
     figs[f"heatmap-{val}"] = app.build_heatmap_fig(start)
     figs[f"cumulative-{val}"] = app.build_cumulative_time_fig(start)
 
@@ -95,7 +96,8 @@ CARD_STYLE = (
 
 def kpi_card_html(title, value, subtitle, value_color=None):
     color_attr = f"color:{value_color};" if value_color else f"color:{TEXT};"
-    return f"""<div class="col-md-2 col-sm-4 col-6 mb-2">
+    # Equal-width on desktop (col-md), two-up on mobile (col-6) — fits 7 cards.
+    return f"""<div class="col-6 col-md mb-2">
   <div class="card text-center h-100 kpi-card" style="{CARD_STYLE}">
     <div class="card-body py-3">
       <div class="text-uppercase" style="color:{MUTED};font-size:0.72rem;letter-spacing:0.06em;font-weight:500">{title}</div>
@@ -166,6 +168,8 @@ kpi_html = "".join([
                   value_color=app.form_color),
     kpi_card_html("Load Ratio", f"{app.acwr:.2f}", app.acwr_label,
                   value_color=app.acwr_color),
+    kpi_card_html("Strain", f"{app.latest_strain:.1f}", app.latest_strain_label,
+                  value_color=app.latest_strain_color),
     kpi_card_html(
         "This Week",
         f"{app.this_week_hours:.1f}h",
@@ -273,31 +277,7 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<!-- Section A: Form + Load explainer + chart -->
-<div class="px-4 py-2 mb-2" style="line-height:1.6;color:{TEXT};font-size:0.92rem">
-{explainer_html}
-</div>
-
-<div class="row"><div class="col-md-12"><div id="combined-form-acwr"></div></div></div>
-
-<hr>
-
-<!-- Section B: Year heatmap (toggle Load / Activities) + tables -->
-<div class="d-flex justify-content-end mb-1">
-  <div class="btn-group btn-group-sm" role="group">
-    <button type="button" id="hm-btn-load" class="btn btn-secondary active"
-            onclick="toggleHeatmap('load')">Load</button>
-    <button type="button" id="hm-btn-activities" class="btn btn-secondary"
-            onclick="toggleHeatmap('activities')">Activity</button>
-  </div>
-</div>
-<div class="row"><div class="col-md-12">
-  <div id="year-heatmap-load"></div>
-  <div id="year-heatmap-activities" style="display:none"></div>
-</div></div>
-
-<hr>
-
+<!-- Section A: Stats tables -->
 <div class="row mt-4">
   <div class="col-md-6">
     <h4 class="text-center my-3">🏆 Overall Stats</h4>
@@ -319,6 +299,31 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
+<!-- Section A: Form + Load explainer + chart -->
+<div class="px-4 py-2 mb-2" style="line-height:1.6;color:{TEXT};font-size:0.92rem">
+{explainer_html}
+</div>
+
+<div class="row"><div class="col-md-12"><div id="combined-form-acwr"></div></div></div>
+
+<hr>
+
+<!-- Section B: Year heatmap (toggle Load / Activities) -->
+<div class="d-flex justify-content-end mb-1">
+  <div class="btn-group btn-group-sm" role="group">
+    <button type="button" id="hm-btn-load" class="btn btn-secondary active"
+            onclick="toggleHeatmap('load')">Load</button>
+    <button type="button" id="hm-btn-activities" class="btn btn-secondary"
+            onclick="toggleHeatmap('activities')">Activity</button>
+  </div>
+</div>
+<div class="row"><div class="col-md-12">
+  <div id="year-heatmap-load"></div>
+  <div id="year-heatmap-activities" style="display:none"></div>
+</div></div>
+
+<hr>
+
 <!-- Section C: Filter + fitness/YoY + heatmap/cumulative -->
 <div class="d-flex align-items-center justify-content-center my-3 px-3 py-2 filter-bar">
   <span class="me-3 fw-semibold" style="color:{TEXT}">Filter range:</span>
@@ -332,6 +337,14 @@ HTML = f"""<!DOCTYPE html>
 {filter_aware_divs_html('fitness')}
   </div>
   <div class="col-md-6"><div id="yoy"></div></div>
+</div>
+
+<hr>
+
+<div class="row">
+  <div class="col-md-12">
+{filter_aware_divs_html('strain')}
+  </div>
 </div>
 
 <hr>
