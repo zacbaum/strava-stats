@@ -32,13 +32,67 @@ df.loc[(df['type'] == 'Run') & (df['total_elevation_gain'] == 0), 'start_date_lo
 # global filter dropdown, not by upstream slicing here.
 polylines_for_map = df['summary_polyline'].copy()
 
-df['type'] = df.apply(
-    lambda row: 'Racquet Sports' if row['type'] == 'Workout' and 'pickleball' in str(row.get('name', '')).lower()
-    else ('Racquet Sports' if row['type'] == 'Workout' and 'squash' in str(row.get('name', '')).lower()
-        else ('Cardio' if row['type'] == 'Workout'
-            else ('Weight Training' if row['type'] == 'WeightTraining' else row['type']))),
-    axis=1
-)
+# Every Strava sport mapped to a display category — the full API enum (legacy
+# `type` plus the newer `sport_type` values), so any sport that shows up in the
+# feed lands in a sensible bucket instead of spawning its own pie slice.
+# Run/Ride/Hike/Walk stay standalone: they carry real volume here and the PR
+# cards / pace logic reference them by name.
+SPORT_CATEGORIES = {
+    # Run
+    'Run': 'Run', 'TrailRun': 'Run', 'VirtualRun': 'Run',
+    # Ride
+    'Ride': 'Ride', 'MountainBikeRide': 'Ride', 'GravelRide': 'Ride',
+    'EBikeRide': 'Ride', 'EMountainBikeRide': 'Ride', 'VirtualRide': 'Ride',
+    'Handcycle': 'Ride', 'Velomobile': 'Ride',
+    # On foot
+    'Walk': 'Walk', 'Hike': 'Hike',
+    # Racquet Sports (Padel isn't in Strava's enum yet, but future-proof it)
+    'Tennis': 'Racquet Sports', 'Padel': 'Racquet Sports',
+    'Pickleball': 'Racquet Sports', 'Squash': 'Racquet Sports',
+    'Badminton': 'Racquet Sports', 'Racquetball': 'Racquet Sports',
+    'TableTennis': 'Racquet Sports',
+    # Weight Training
+    'WeightTraining': 'Weight Training', 'Crossfit': 'Weight Training',
+    # Cardio (gym-style conditioning)
+    'Workout': 'Cardio', 'HighIntensityIntervalTraining': 'Cardio',
+    'Elliptical': 'Cardio', 'StairStepper': 'Cardio',
+    # Water Sports
+    'Swim': 'Water Sports', 'Rowing': 'Water Sports', 'VirtualRow': 'Water Sports',
+    'Kayaking': 'Water Sports', 'Canoeing': 'Water Sports',
+    'StandUpPaddling': 'Water Sports', 'Surfing': 'Water Sports',
+    'Kitesurf': 'Water Sports', 'Windsurf': 'Water Sports', 'Sail': 'Water Sports',
+    # Winter Sports
+    'AlpineSki': 'Winter Sports', 'BackcountrySki': 'Winter Sports',
+    'NordicSki': 'Winter Sports', 'RollerSki': 'Winter Sports',
+    'Snowboard': 'Winter Sports', 'Snowshoe': 'Winter Sports',
+    'IceSkate': 'Winter Sports',
+    # Mind & Body
+    'Yoga': 'Mind & Body', 'Pilates': 'Mind & Body',
+    # One-offs with no natural group
+    'Golf': 'Other', 'Soccer': 'Other', 'Skateboard': 'Other',
+    'InlineSkate': 'Other', 'RockClimbing': 'Other', 'Wheelchair': 'Other',
+}
+
+# Phone/watch-logged sessions arrive as generic "Workout" with the sport only
+# in the title (padel, pickleball and squash all sync this way), so sniff the
+# name before falling back to Cardio. First keyword hit wins.
+WORKOUT_NAME_CATEGORIES = [
+    (('padel', 'pickleball', 'squash', 'tennis', 'badminton', 'racquet',
+      'racket', 'ping pong'), 'Racquet Sports'),
+    (('water sports', 'swim', 'kayak', 'canoe', 'paddling', 'paddle', 'surf',
+      'sail', 'rowing'), 'Water Sports'),
+    (('yoga', 'pilates'), 'Mind & Body'),
+]
+
+def categorize_activity(row):
+    if row['type'] == 'Workout':
+        name = str(row.get('name', '')).lower()
+        for keywords, category in WORKOUT_NAME_CATEGORIES:
+            if any(k in name for k in keywords):
+                return category
+    return SPORT_CATEGORIES.get(row['type'], 'Other')
+
+df['type'] = df.apply(categorize_activity, axis=1)
 
 df['date'] = df['start_date_local'].dt.date
 df['year'] = df['start_date_local'].dt.year
@@ -117,6 +171,10 @@ color_map = {
     'Weight Training':  '#EC4899',  # pink
     'Hike':             '#94A3B8',  # slate
     'Walk':             '#84CC16',  # lime
+    'Water Sports':     '#22D3EE',  # cyan
+    'Winter Sports':    '#818CF8',  # indigo
+    'Mind & Body':      '#34D399',  # emerald
+    'Other':            '#6B7280',  # gray
 }
 
 # Fill any activity types that aren't pre-mapped, cycling through Set2
@@ -889,14 +947,43 @@ def build_fitness_fig(start_date):
                      tickformat=".0f")
     return fig
 
-# 2c. Daily Strain chart (WHOOP-style 0–21) — global-filter aware
+# 2c. Strain chart (WHOOP-style 0–21) — global-filter aware.
+# Short windows show one bar per day. Past ~4 months, daily bars smear into
+# sub-pixel noise on a phone, so longer windows aggregate to one bar per week:
+# the average strain of that week's *active* days (rest days excluded, so the
+# 0–21 zone bands keep their day-level meaning), with the peak day and session
+# count preserved in the hover.
+STRAIN_WEEKLY_THRESHOLD_DAYS = 120
 
 def build_strain_fig(start_date):
     ds = daily_scores[daily_scores['date'] >= start_date] if start_date else daily_scores
-    bar_colors = [strain_zone(s)[1] for s in ds['strain']]
+    weekly = len(ds) > STRAIN_WEEKLY_THRESHOLD_DAYS
+    if weekly:
+        w = ds.copy()
+        w['week'] = pd.to_datetime(w['date']).dt.to_period('W').dt.start_time
+        agg = w.groupby('week')['strain'].agg(
+            strain=lambda s: s[s > 0].mean() if (s > 0).any() else 0.0,
+            peak='max',
+            active_days=lambda s: int((s > 0).sum()),
+        ).reset_index()
+        bar_x, bar_y = agg['week'], agg['strain'].round(1)
+        bar_custom = np.stack([agg['peak'].round(1), agg['active_days']], axis=-1)
+        bar_hover = ("Week of %{x|%b %d} · Avg day: %{y:.1f}<br>"
+                     "Peak day: %{customdata[0]:.1f} · "
+                     "%{customdata[1]:.0f} active days<extra></extra>")
+        bar_name, bar_colors = "Weekly strain", [strain_zone(s)[1] for s in agg['strain']]
+        trend_y = agg['strain'].rolling(4, min_periods=1).mean().round(1)
+        trend_hover, title_mode = "4-week avg: %{y:.1f}<extra></extra>", "Weekly Strain · avg day"
+    else:
+        bar_x, bar_y = ds['date'], ds['strain'].round(1)
+        bar_custom = None
+        bar_hover = "Strain: %{y:.1f}<br>%{x|%b %d}<extra></extra>"
+        bar_name, bar_colors = "Daily strain", [strain_zone(s)[1] for s in ds['strain']]
+        trend_y = ds['strain'].rolling(7, min_periods=1).mean().round(1)
+        trend_hover, title_mode = "7-day avg: %{y:.1f}<extra></extra>", "Daily Strain · 0–21"
     fig = go.Figure()
-    # Faint zone bands behind the bars — same palette as the bars, so each day's
-    # coloured bar reinforces the band it lands in (mirrors the Form chart).
+    # Faint zone bands behind the bars — same palette as the bars, so each bar's
+    # colour reinforces the band it lands in (mirrors the Form chart).
     for y0, y1, _, hex_color in STRAIN_BANDS:
         h = hex_color.lstrip("#")
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
@@ -907,30 +994,31 @@ def build_strain_fig(start_date):
             line_width=0, layer="below",
         )
     fig.add_trace(go.Bar(
-        x=ds['date'], y=ds['strain'].round(1),
+        x=bar_x, y=bar_y,
         marker=dict(color=bar_colors, line=dict(width=0)),
-        hovertemplate="Strain: %{y:.1f}<br>%{x|%b %d}<extra></extra>",
-        name="Daily strain", showlegend=False,
+        customdata=bar_custom,
+        hovertemplate=bar_hover,
+        name=bar_name, showlegend=False,
     ))
-    # 7-day rolling average line — reads the trend through the daily noise
+    # Rolling average line — reads the trend through the bar-to-bar noise
     fig.add_trace(go.Scatter(
-        x=ds['date'], y=ds['strain'].rolling(7, min_periods=1).mean().round(1),
+        x=bar_x, y=trend_y,
         mode="lines",
         line=dict(color=dark_text_color, width=2),
-        hovertemplate="7-day avg: %{y:.1f}<extra></extra>",
-        name="7-day avg", showlegend=False,
+        hovertemplate=trend_hover,
+        name="trend", showlegend=False,
     ))
     fig.update_layout(
         template=dark_template,
         title_text=(
-            f"🔥 Daily Strain · 0–21 &nbsp;&nbsp;"
+            f"🔥 {title_mode} &nbsp;&nbsp;"
             f"<span style='color:{latest_strain_color}; font-weight:600'>"
             f"Latest {latest_strain:.1f} · {latest_strain_label}</span>"
         ),
         height=440,
         hovermode="x unified",
         margin=dict(l=60, r=30, t=70, b=20),
-        bargap=0.15,
+        bargap=0.25 if weekly else 0.15,
     )
     # Zone labels inside the plot at the left edge (mirrors the Form chart).
     for y0, y1, label, color in STRAIN_BANDS:
@@ -1153,7 +1241,9 @@ layout_scatter = dbc.Row([
 recent_activities = df.sort_values("start_date_local", ascending=False).head(5)
 activity_emoji = {
     'Run': '🏃', 'Ride': '🚴', 'Racquet Sports': '🏓', 'Cardio': '💪',
-    'Weight Training': '🏋️', 'Hike': '🥾', 'Workout': '🤸', 'Walk': '🚶'
+    'Weight Training': '🏋️', 'Hike': '🥾', 'Walk': '🚶',
+    'Water Sports': '🌊', 'Winter Sports': '⛷️', 'Mind & Body': '🧘',
+    'Other': '🎯',
 }
 
 def _feed_distance(row):
