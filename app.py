@@ -272,41 +272,6 @@ daily_scores['fitness'] = daily_scores['training_load'].ewm(span=42, min_periods
 daily_scores['fatigue'] = daily_scores['training_load'].ewm(span=7, min_periods=1).mean()
 daily_scores['form'] = daily_scores['fitness'] - daily_scores['fatigue']
 
-# Daily Strain — a WHOOP-style 0–21 exertion score. Logarithmic map of the day's
-# total training load, calibrated so the 99th-percentile day ≈ 21. Unlike the
-# cardio-fitness model (CTL/ATL/TSB), strain simply accumulates every session's
-# load, so a solo weight-training day still registers a meaningful number.
-STRAIN_K = 0.02
-_active_load = daily_scores.loc[daily_scores['training_load'] > 0, 'training_load']
-_strain_ref = float(np.percentile(_active_load, 99)) if not _active_load.empty else 1.0
-_strain_denom = np.log1p(STRAIN_K * _strain_ref)
-daily_scores['strain'] = np.where(
-    daily_scores['training_load'] > 0,
-    (21 * np.log1p(STRAIN_K * daily_scores['training_load']) / _strain_denom).clip(upper=21),
-    0.0,
-)
-
-def strain_zone(s):
-    """WHOOP-style band + semantic colour for a 0–21 strain value."""
-    if s >= 18:
-        return "All-Out", SERIES["overreach"]
-    if s >= 14:
-        return "Strenuous", SERIES["productive"]
-    if s >= 10:
-        return "Moderate", SERIES["optimal"]
-    return "Light", SERIES["fresh"]
-
-# Headline strain = most recent day that actually had a session (so a rest day
-# today doesn't read as a misleading 0 in the KPI card or chart title).
-_active_strain = daily_scores[daily_scores['strain'] > 0]
-if not _active_strain.empty:
-    _ls_row = _active_strain.iloc[-1]
-    latest_strain = float(_ls_row['strain'])
-    latest_strain_date = _ls_row['date']
-else:
-    latest_strain, latest_strain_date = 0.0, today
-latest_strain_label, latest_strain_color = strain_zone(latest_strain)
-
 #######################
 # YEAR / PROJECTION METRICS
 #######################
@@ -610,13 +575,11 @@ def kpi_card(title, value, subtitle="", value_color=None):
                "borderRadius": "10px"}
     )
 
-# Seven cards — equal-width on desktop (md=True), two-up on mobile (xs=6).
+# Six cards — equal-width on desktop (md=True), two-up on mobile (xs=6).
 layout_kpi = dbc.Row([
     dbc.Col(kpi_card("Fitness (CTL)", f"{current_fitness:.0f}", "42-day load avg"), xs=6, md=True),
     dbc.Col(kpi_card("Form (TSB)", f"{current_form:+.0f}", form_label, value_color=form_color), xs=6, md=True),
     dbc.Col(kpi_card("Load Ratio", f"{acwr:.2f}", acwr_label, value_color=acwr_color), xs=6, md=True),
-    dbc.Col(kpi_card("Strain", f"{latest_strain:.1f}", latest_strain_label,
-                     value_color=latest_strain_color), xs=6, md=True),
     dbc.Col(kpi_card("This Week", f"{this_week_hours:.1f}h",
                      f"{week_sign}{week_delta:.1f}h vs 8-wk avg",
                      value_color=week_color), xs=6, md=True),

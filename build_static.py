@@ -172,8 +172,6 @@ kpi_html = "".join([
                   value_color=app.form_color),
     kpi_card_html("Load Ratio", f"{app.acwr:.2f}", app.acwr_label,
                   value_color=app.acwr_color),
-    kpi_card_html("Strain", f"{app.latest_strain:.1f}", app.latest_strain_label,
-                  value_color=app.latest_strain_color),
     kpi_card_html(
         "This Week",
         f"{app.this_week_hours:.1f}h",
