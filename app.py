@@ -307,15 +307,6 @@ else:
     latest_strain, latest_strain_date = 0.0, today
 latest_strain_label, latest_strain_color = strain_zone(latest_strain)
 
-# Zone bands for the strain chart's backdrop (low → high). Reused by the
-# figure builder below; kept next to the model so the thresholds live together.
-STRAIN_BANDS = [
-    (0, 10, "Light", SERIES["fresh"]),
-    (10, 14, "Moderate", SERIES["optimal"]),
-    (14, 18, "Strenuous", SERIES["productive"]),
-    (18, 21.5, "All-Out", SERIES["overreach"]),
-]
-
 #######################
 # YEAR / PROJECTION METRICS
 #######################
@@ -945,92 +936,6 @@ def build_fitness_fig(start_date):
                      tickformat=".0f")
     fig.update_yaxes(title_text="Score", secondary_y=True, showgrid=False,
                      tickformat=".0f")
-    return fig
-
-# 2c. Strain chart (WHOOP-style 0–21) — global-filter aware.
-# Short windows show one bar per day. Past ~4 months, daily bars smear into
-# sub-pixel noise on a phone, so longer windows aggregate to one bar per week:
-# the average strain of that week's *active* days (rest days excluded, so the
-# 0–21 zone bands keep their day-level meaning), with the peak day and session
-# count preserved in the hover.
-STRAIN_WEEKLY_THRESHOLD_DAYS = 120
-
-def build_strain_fig(start_date):
-    ds = daily_scores[daily_scores['date'] >= start_date] if start_date else daily_scores
-    weekly = len(ds) > STRAIN_WEEKLY_THRESHOLD_DAYS
-    if weekly:
-        w = ds.copy()
-        w['week'] = pd.to_datetime(w['date']).dt.to_period('W').dt.start_time
-        agg = w.groupby('week')['strain'].agg(
-            strain=lambda s: s[s > 0].mean() if (s > 0).any() else 0.0,
-            peak='max',
-            active_days=lambda s: int((s > 0).sum()),
-        ).reset_index()
-        bar_x, bar_y = agg['week'], agg['strain'].round(1)
-        bar_custom = np.stack([agg['peak'].round(1), agg['active_days']], axis=-1)
-        bar_hover = ("Week of %{x|%b %d} · Avg day: %{y:.1f}<br>"
-                     "Peak day: %{customdata[0]:.1f} · "
-                     "%{customdata[1]:.0f} active days<extra></extra>")
-        bar_name, bar_colors = "Weekly strain", [strain_zone(s)[1] for s in agg['strain']]
-        trend_y = agg['strain'].rolling(4, min_periods=1).mean().round(1)
-        trend_hover, title_mode = "4-week avg: %{y:.1f}<extra></extra>", "Weekly Strain · avg day"
-    else:
-        bar_x, bar_y = ds['date'], ds['strain'].round(1)
-        bar_custom = None
-        bar_hover = "Strain: %{y:.1f}<br>%{x|%b %d}<extra></extra>"
-        bar_name, bar_colors = "Daily strain", [strain_zone(s)[1] for s in ds['strain']]
-        trend_y = ds['strain'].rolling(7, min_periods=1).mean().round(1)
-        trend_hover, title_mode = "7-day avg: %{y:.1f}<extra></extra>", "Daily Strain · 0–21"
-    fig = go.Figure()
-    # Faint zone bands behind the bars — same palette as the bars, so each bar's
-    # colour reinforces the band it lands in (mirrors the Form chart).
-    for y0, y1, _, hex_color in STRAIN_BANDS:
-        h = hex_color.lstrip("#")
-        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-        fig.add_shape(
-            type="rect", xref="paper", yref="y",
-            x0=0, x1=1, y0=y0, y1=y1,
-            fillcolor=f"rgba({r},{g},{b},0.32)",
-            line_width=0, layer="below",
-        )
-    fig.add_trace(go.Bar(
-        x=bar_x, y=bar_y,
-        marker=dict(color=bar_colors, line=dict(width=0)),
-        customdata=bar_custom,
-        hovertemplate=bar_hover,
-        name=bar_name, showlegend=False,
-    ))
-    # Rolling average line — reads the trend through the bar-to-bar noise
-    fig.add_trace(go.Scatter(
-        x=bar_x, y=trend_y,
-        mode="lines",
-        line=dict(color=dark_text_color, width=2),
-        hovertemplate=trend_hover,
-        name="trend", showlegend=False,
-    ))
-    fig.update_layout(
-        template=dark_template,
-        title_text=(
-            f"🔥 {title_mode} &nbsp;&nbsp;"
-            f"<span style='color:{latest_strain_color}; font-weight:600'>"
-            f"Latest {latest_strain:.1f} · {latest_strain_label}</span>"
-        ),
-        height=440,
-        hovermode="x unified",
-        margin=dict(l=60, r=30, t=70, b=20),
-        bargap=0.25 if weekly else 0.15,
-    )
-    # Zone labels inside the plot at the left edge (mirrors the Form chart).
-    for y0, y1, label, color in STRAIN_BANDS:
-        fig.add_annotation(
-            xref="paper", yref="y",
-            x=0.01, y=(y0 + min(y1, 21)) / 2, xanchor="left", yanchor="middle",
-            text=label, showarrow=False,
-            font=dict(color=color, size=10, family=chart_font_family, weight=600),
-        )
-    fig.update_xaxes(title_text=None, showgrid=False)
-    fig.update_yaxes(title_text="Strain", range=[0, 21.5],
-                     tickvals=[0, 10, 14, 18, 21], tickformat=".0f")
     return fig
 
 # layout_fitness_yoy_row (fitness chart side-by-side with YoY trajectory) is
@@ -1727,10 +1632,6 @@ layout_fitness_yoy_row = dbc.Row([
     dbc.Col(dcc.Graph(figure=yoy_fig), md=6),
 ])
 
-layout_strain = dbc.Row([
-    dbc.Col(dcc.Graph(id='strain-graph', figure=build_strain_fig(INITIAL_FILTER_START)), md=12)
-])
-
 #######################
 # MAP — where you train
 #######################
@@ -1940,8 +1841,6 @@ app.layout = dbc.Container([
     filter_dropdown,
     layout_fitness_yoy_row,
     html.Hr(),
-    layout_strain,
-    html.Hr(),
     layout_heatmap_cumulative,
     html.Hr(),
     # Section C — Reference (less-used plots collapsed by default)
@@ -1955,7 +1854,6 @@ app.layout = dbc.Container([
 
 @app.callback(
     Output('fitness-graph', 'figure'),
-    Output('strain-graph', 'figure'),
     Output('heatmap-graph', 'figure'),
     Output('cumulative-time-graph', 'figure'),
     Input('global-filter', 'value'),
@@ -1964,7 +1862,6 @@ def _update_filtered_charts(filter_value):
     start = _filter_start_from_value(filter_value)
     return (
         build_fitness_fig(start),
-        build_strain_fig(start),
         build_heatmap_fig(start),
         build_cumulative_time_fig(start),
     )

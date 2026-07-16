@@ -35,7 +35,7 @@ python app.py   # serves on http://0.0.0.0:10000
 
 - **Fitness model**: Banister TRIMP via HR reserve. `HR_MAX=195`, `HR_REST=55` (both configurable up top). CTL=42-day EWMA, ATL=7-day EWMA, TSB=CTL−ATL. No-HR fallback is `duration_hr × 100`.
 - **Sport categories**: `SPORT_CATEGORIES` in `app.py` maps the full Strava sport-type enum into display buckets (Run, Ride, Walk, Hike, Racquet Sports, Weight Training, Cardio, Water Sports, Winter Sports, Mind & Body, Other). Generic "Workout" uploads are name-sniffed via `WORKOUT_NAME_CATEGORIES` (padel/pickleball/squash/tennis → Racquet Sports, etc.). Run/Ride/Hike/Walk names are load-bearing — PR cards and pace logic reference them directly.
-- **Strain chart granularity**: windows ≤ `STRAIN_WEEKLY_THRESHOLD_DAYS` (120) show daily bars; longer windows aggregate to weekly bars (mean strain of *active* days, so the 0–21 zone bands keep their day-level meaning) — daily bars were unreadable on mobile at year scale.
+- **Strain**: WHOOP-style 0–21 daily score (log map of training load, 99th-percentile day ≈ 21). Surfaced only as a KPI card — the strain time-series chart was removed (unreadable on mobile).
 - **Year projection**: pattern-based (`ytd + (prev_year_total − prev_year_at_same_day)`), not linear. Lines up with the YoY trajectory chart.
 - **Global filter dropdown** (top of trend section): controls only the 4 filter-aware charts (fitness, rolling, heatmap, cumulative). Pies/PRs/KPIs always show full history. Defaults to "Past Year".
 - **Map**: 270 routes rendered as two passes (warm base + heat overlay) for log-like saturation. Activity-weighted home centring + dynamic zoom. Region cluster circles fade out past zoom 6.5.

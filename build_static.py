@@ -3,7 +3,7 @@ Render the Strava Training Dashboard as a single static HTML file at
 docs/index.html. Used for GitHub Pages hosting — no Python server required.
 
 Replaces Dash's server-side filter callback with client-side JS that toggles
-visibility of pre-rendered figure divs (one per filter value). All 24
+visibility of pre-rendered figure divs (one per filter value). All 18
 filter-aware figures are baked into the page on render.
 
 Run locally:   python build_static.py
@@ -41,7 +41,6 @@ figs = {}
 for val in FILTER_VALUES:
     start = app._filter_start_from_value(val)
     figs[f"fitness-{val}"] = app.build_fitness_fig(start)
-    figs[f"strain-{val}"] = app.build_strain_fig(start)
     figs[f"heatmap-{val}"] = app.build_heatmap_fig(start)
     figs[f"cumulative-{val}"] = app.build_cumulative_time_fig(start)
 
@@ -313,7 +312,7 @@ HTML = f"""<!DOCTYPE html>
 
 <hr>
 
-<!-- Section B: Filter + fitness/YoY + strain + heatmap/cumulative -->
+<!-- Section B: Filter + fitness/YoY + heatmap/cumulative -->
 <div class="d-flex align-items-center justify-content-center my-3 px-3 py-2 filter-bar">
   <span class="me-3 fw-semibold" style="color:{TEXT}">Filter range:</span>
   <select id="global-filter" class="form-select w-auto">
@@ -326,14 +325,6 @@ HTML = f"""<!DOCTYPE html>
 {filter_aware_divs_html('fitness')}
   </div>
   <div class="col-md-6"><div id="yoy"></div></div>
-</div>
-
-<hr>
-
-<div class="row">
-  <div class="col-md-12">
-{filter_aware_divs_html('strain')}
-  </div>
 </div>
 
 <hr>
