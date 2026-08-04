@@ -1,4 +1,5 @@
 id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,start_date_local,start_latlng,kilojoules,average_heartrate,max_heartrate,elev_high,elev_low,average_speed,max_speed,location_city,location_state,location_country,timezone,summary_polyline
+19587293115,Walk,Evening Walk,1014.9,1310,1310,0.0,2026-08-03 18:21:23+00:00,2026-08-03T19:21:23Z,[],,97.8,128.0,,,0.775,0.0,,,,(GMT+00:00) Europe/London,
 19578784699,WeightTraining,Morning Weight Training,0.0,3409,3409,0.0,2026-08-03 05:57:08+00:00,2026-08-03T06:57:08Z,[],,124.0,163.0,,,0.0,0.0,,,,(GMT+00:00) Europe/London,
 19565774634,Workout,Morning Workout,0.0,4205,4205,0.0,2026-08-02 07:12:57+00:00,2026-08-02T08:12:57Z,[],,152.7,184.0,,,0.0,0.0,,,,(GMT+00:00) Europe/London,
 19560005001,Walk,Evening Walk,776.6,711,711,0.0,2026-08-01 17:50:54+00:00,2026-08-01T18:50:54Z,[],,96.0,108.0,,,1.092,0.0,,,,(GMT+00:00) Europe/London,
