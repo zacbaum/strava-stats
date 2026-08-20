@@ -1,4 +1,5 @@
 id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,start_date_local,start_latlng,kilojoules,average_heartrate,max_heartrate,elev_high,elev_low,average_speed,max_speed,location_city,location_state,location_country,timezone,summary_polyline
+19828693994,WeightTraining,Afternoon Weight Training,0.0,3009,3009,0.0,2026-08-20 19:39:36+00:00,2026-08-20T15:39:36Z,[],,96.4,127.0,,,0.0,0.0,,,,(GMT-05:00) America/Toronto,
 19800451662,WeightTraining,Afternoon Weight Training,0.0,3408,3408,0.0,2026-08-18 20:44:24+00:00,2026-08-18T16:44:24Z,[],,110.4,149.0,,,0.0,0.0,,,,(GMT-05:00) America/Toronto,
 19784315568,WeightTraining,Afternoon Weight Training,0.0,2575,2575,0.0,2026-08-17 18:57:04+00:00,2026-08-17T14:57:04Z,[],,97.8,137.0,,,0.0,0.0,,,,(GMT-05:00) America/Toronto,
 19767680422,WeightTraining,Morning Weight Training,0.0,3464,3464,0.0,2026-08-16 13:22:09+00:00,2026-08-16T09:22:09Z,[],,93.4,116.0,,,0.0,0.0,,,,(GMT-05:00) America/Toronto,
