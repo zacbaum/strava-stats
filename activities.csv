@@ -1,4 +1,7 @@
 id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,start_date_local,start_latlng,kilojoules,average_heartrate,max_heartrate,elev_high,elev_low,average_speed,max_speed,location_city,location_state,location_country,timezone,summary_polyline
+19940812554,Walk,Afternoon Walk,1610.2,7448,7448,0.0,2026-08-28 18:39:11+00:00,2026-08-28T14:39:11Z,[],,129.4,175.0,,,0.216,0.0,,,,(GMT-05:00) America/Toronto,
+19940869311,Walk,Afternoon Walk,1290.1,2956,2956,0.0,2026-08-28 17:34:22+00:00,2026-08-28T13:34:22Z,[],,121.6,146.0,,,0.436,0.0,,,,(GMT-05:00) America/Toronto,
+19937564582,Walk,Morning Walk,1847.3,1740,1740,0.0,2026-08-28 14:49:23+00:00,2026-08-28T10:49:23Z,[],,97.9,123.0,,,1.062,0.0,,,,(GMT-05:00) America/Toronto,
 19930750680,Walk,Night Walk,971.1,913,913,0.0,2026-08-28 01:23:16+00:00,2026-08-27T21:23:16Z,[],,109.3,128.0,,,1.064,0.0,,,,(GMT-05:00) America/Toronto,
 19871908354,Walk,Evening Walk,842.5,1234,1234,0.0,2026-08-23 23:10:25+00:00,2026-08-23T19:10:25Z,[],,100.8,124.0,,,0.683,0.0,,,,(GMT-05:00) America/Toronto,
 19851820914,WeightTraining,Morning Weight Training,0.0,2323,2323,0.0,2026-08-22 13:49:35+00:00,2026-08-22T09:49:35Z,[],,104.0,134.0,,,0.0,0.0,,,,(GMT-05:00) America/Toronto,
