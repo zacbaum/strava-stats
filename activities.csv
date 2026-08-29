@@ -1,4 +1,5 @@
 id,type,name,distance,moving_time,elapsed_time,total_elevation_gain,start_date,start_date_local,start_latlng,kilojoules,average_heartrate,max_heartrate,elev_high,elev_low,average_speed,max_speed,location_city,location_state,location_country,timezone,summary_polyline
+19943970988,Walk,Night Walk,11442.8,11181,11181,0.0,2026-08-29 02:04:01+00:00,2026-08-28T22:04:01Z,[],,126.9,167.0,,,1.023,0.0,,,,(GMT-05:00) America/Toronto,
 19943160793,Walk,Night Walk,1676.5,1351,1351,0.0,2026-08-29 01:23:25+00:00,2026-08-28T21:23:25Z,[],,137.6,165.0,,,1.241,0.0,,,,(GMT-05:00) America/Toronto,
 19940812554,Walk,Afternoon Walk,1610.2,7448,7448,0.0,2026-08-28 18:39:11+00:00,2026-08-28T14:39:11Z,[],,129.4,175.0,,,0.216,0.0,,,,(GMT-05:00) America/Toronto,
 19940869311,Walk,Afternoon Walk,1290.1,2956,2956,0.0,2026-08-28 17:34:22+00:00,2026-08-28T13:34:22Z,[],,121.6,146.0,,,0.436,0.0,,,,(GMT-05:00) America/Toronto,
